@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -28,7 +28,7 @@ def _make_call_and_result():
         filename="test.wav",
         audio_format="wav",
         source="api",
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
     result = AnalysisResult(
         id=uuid.uuid4(),
@@ -38,7 +38,7 @@ def _make_call_and_result():
         fraud_score=0.85,
         fraud_categories=["Vishing"],
         reasons=["Suspicious"],
-        analyzed_at=datetime.utcnow(),
+        analyzed_at=datetime.now(UTC),
     )
     call.analysis = result
     return call, result

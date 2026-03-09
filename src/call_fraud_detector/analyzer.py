@@ -1,7 +1,7 @@
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,7 +81,7 @@ async def analyze_file(
         fraud_categories=parsed.get("fraud_categories", []),
         reasons=parsed.get("reasons", []),
         raw_response=raw_response,
-        analyzed_at=datetime.utcnow(),
+        analyzed_at=datetime.now(UTC),
     )
     session.add(result)
     await session.commit()
@@ -132,7 +132,7 @@ async def analyze_bytes(
         fraud_categories=parsed.get("fraud_categories", []),
         reasons=parsed.get("reasons", []),
         raw_response=raw_response,
-        analyzed_at=datetime.utcnow(),
+        analyzed_at=datetime.now(UTC),
     )
     session.add(result)
     await session.commit()

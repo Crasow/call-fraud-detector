@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -19,7 +19,7 @@ class Call(Base):
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="upload")
     file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     analysis: Mapped["AnalysisResult | None"] = relationship(back_populates="call", uselist=False, cascade="all, delete-orphan")
 
@@ -35,6 +35,6 @@ class AnalysisResult(Base):
     fraud_categories: Mapped[dict] = mapped_column(JSONB, default=list)
     reasons: Mapped[dict] = mapped_column(JSONB, default=list)
     raw_response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    analyzed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    analyzed_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     call: Mapped[Call] = relationship(back_populates="analysis")
