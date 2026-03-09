@@ -1,0 +1,25 @@
+<tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='/calls/{{ call.id }}'">
+    <td class="px-6 py-4 text-sm text-gray-500">{{ call.created_at.strftime('%Y-%m-%d %H:%M') if call.created_at else '—' }}</td>
+    <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ call.filename }}</td>
+    <td class="px-6 py-4 text-sm text-gray-500">{{ call.source }}</td>
+    <td class="px-6 py-4 text-sm">
+        {% if call.analysis %}
+        <div class="flex items-center gap-2">
+            <div class="w-16 bg-gray-200 rounded-full h-2">
+                <div class="h-2 rounded-full {% if call.analysis.fraud_score > 0.7 %}bg-red-500{% elif call.analysis.fraud_score > 0.3 %}bg-yellow-500{% else %}bg-green-500{% endif %}"
+                     style="width: {{ (call.analysis.fraud_score * 100)|int }}%"></div>
+            </div>
+            <span>{{ '%.0f' % (call.analysis.fraud_score * 100) }}%</span>
+        </div>
+        {% else %}—{% endif %}
+    </td>
+    <td class="px-6 py-4 text-sm">
+        {% if call.analysis %}
+            {% if call.analysis.is_fraud %}
+            <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">Fraud</span>
+            {% else %}
+            <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Clean</span>
+            {% endif %}
+        {% else %}—{% endif %}
+    </td>
+</tr>

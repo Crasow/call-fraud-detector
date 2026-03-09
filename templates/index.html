@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}Upload — Call Fraud Detector{% endblock %}
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="text-sm text-gray-500">Total Calls</div>
+        <div class="text-3xl font-bold">{{ total_calls }}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="text-sm text-gray-500">Fraud Detected</div>
+        <div class="text-3xl font-bold text-red-600">{{ fraud_calls }}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="text-sm text-gray-500">Clean Calls</div>
+        <div class="text-3xl font-bold text-green-600">{{ total_calls - fraud_calls }}</div>
+    </div>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6 mb-8">
+    <h2 class="text-lg font-semibold mb-4">Upload Audio for Analysis</h2>
+
+    <div id="drop-zone"
+         class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center transition-colors cursor-pointer"
+         ondragover="event.preventDefault(); this.classList.add('border-blue-500','bg-blue-50')"
+         ondragleave="this.classList.remove('border-blue-500','bg-blue-50')"
+         ondrop="event.preventDefault(); this.classList.remove('border-blue-500','bg-blue-50'); handleFiles(event.dataTransfer.files)"
+         onclick="document.getElementById('file-input').click()">
+        <input type="file" name="file" accept=".wav,.mp3,.ogg,.flac,.m4a,.webm"
+               class="hidden" id="file-input"
+               onchange="handleFiles(this.files)">
+        <div id="drop-zone-idle">
+            <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <p class="text-gray-600 mt-2">Drop audio file here or click to select</p>
+            <p class="text-sm text-gray-400 mt-1">WAV, MP3, OGG, FLAC, M4A, WebM</p>
+        </div>
+        <div id="drop-zone-selected" class="hidden">
+            <svg class="mx-auto h-10 w-10 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+            </svg>
+            <p id="file-name" class="mt-2 text-sm font-medium text-blue-600"></p>
+            <p id="file-size" class="text-xs text-gray-400"></p>
+        </div>
+    </div>
+
+    <!-- Progress area -->
+    <div id="progress-area" class="hidden mt-4">
+        <div class="flex items-center justify-between mb-1">
+            <span id="progress-label" class="text-sm text-gray-600">Uploading...</span>
+            <span id="progress-pct" class="text-sm font-medium text-gray-700">0%</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2.5">
+            <div id="progress-bar" class="h-2.5 rounded-full bg-blue-500 transition-all duration-300" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- Buttons -->
+    <div class="flex items-center gap-3 mt-4">
+        <button id="btn-analyze" onclick="startUpload()" disabled
+                class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            Analyze
+        </button>
+        <button id="btn-reset" onclick="resetForm()" class="hidden text-gray-500 hover:text-gray-700 text-sm underline">
+            Upload another
+        </button>
+    </div>
+</div>
+
+<div id="result"></div>
+
+<script>
+let selectedFile = null;
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function handleFiles(files) {
+    if (!files || !files.length) return;
+    const file = files[0];
+    const ext = file.name.split('.').pop().toLowerCase();
+    const allowed = ['wav','mp3','ogg','flac','m4a','webm'];
+    if (!allowed.includes(ext)) {
+        showError('Unsupported format: .' + ext + '. Supported: WAV, MP3, OGG, FLAC, M4A, WebM');
+        return;
+    }
+    selectedFile = file;
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('file-size').textContent = formatSize(file.size);
+    document.getElementById('drop-zone-idle').classList.add('hidden');
+    document.getElementById('drop-zone-selected').classList.remove('hidden');
+    document.getElementById('btn-analyze').disabled = false;
+    document.getElementById('result').innerHTML = '';
+}
+
+function startUpload() {
+    if (!selectedFile) return;
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    const xhr = new XMLHttpRequest();
+    const progressArea = document.getElementById('progress-area');
+    const progressBar = document.getElementById('progress-bar');
+    const progressPct = document.getElementById('progress-pct');
+    const progressLabel = document.getElementById('progress-label');
+    const btnAnalyze = document.getElementById('btn-analyze');
+    const btnReset = document.getElementById('btn-reset');
+    const dropZone = document.getElementById('drop-zone');
+
+    // Disable controls
+    btnAnalyze.disabled = true;
+    btnAnalyze.textContent = 'Uploading...';
+    btnReset.classList.add('hidden');
+    dropZone.style.pointerEvents = 'none';
+    dropZone.classList.add('opacity-50');
+    progressArea.classList.remove('hidden');
+    progressBar.style.width = '0%';
+    progressBar.className = 'h-2.5 rounded-full bg-blue-500 transition-all duration-300';
+    progressLabel.textContent = 'Uploading...';
+    progressPct.textContent = '0%';
+    document.getElementById('result').innerHTML = '';
+
+    xhr.upload.addEventListener('progress', function(e) {
+        if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+        }
+    });
+
+    xhr.upload.addEventListener('load', function() {
+        // Upload done, now server is analyzing
+        progressBar.style.width = '100%';
+        progressPct.textContent = '100%';
+        progressBar.className = 'h-2.5 rounded-full bg-yellow-500 transition-all duration-300 animate-pulse';
+        progressLabel.textContent = 'Analyzing audio with Gemini...';
+        btnAnalyze.textContent = 'Analyzing...';
+    });
+
+    xhr.addEventListener('load', function() {
+        if (xhr.status >= 200 && xhr.status < 300) {
+            // Success
+            progressBar.className = 'h-2.5 rounded-full bg-green-500 transition-all duration-300';
+            progressLabel.textContent = 'Done!';
+            document.getElementById('result').innerHTML = xhr.responseText;
+        } else {
+            progressBar.className = 'h-2.5 rounded-full bg-red-500 transition-all duration-300';
+            progressLabel.textContent = 'Server error';
+            showError('Server returned status ' + xhr.status + '. Please try again.');
+        }
+        finishUpload();
+    });
+
+    xhr.addEventListener('error', function() {
+        progressBar.className = 'h-2.5 rounded-full bg-red-500 transition-all duration-300';
+        progressLabel.textContent = 'Network error';
+        showError('Network error. Check your connection and try again.');
+        finishUpload();
+    });
+
+    xhr.addEventListener('timeout', function() {
+        progressBar.className = 'h-2.5 rounded-full bg-red-500 transition-all duration-300';
+        progressLabel.textContent = 'Timeout';
+        showError('Request timed out. The file may be too large or the server is busy.');
+        finishUpload();
+    });
+
+    xhr.timeout = 600000; // 10 min
+    xhr.open('POST', '/upload');
+    xhr.send(formData);
+}
+
+function finishUpload() {
+    const btnAnalyze = document.getElementById('btn-analyze');
+    const btnReset = document.getElementById('btn-reset');
+    const dropZone = document.getElementById('drop-zone');
+
+    btnAnalyze.textContent = 'Analyze';
+    btnAnalyze.disabled = true;
+    btnReset.classList.remove('hidden');
+    dropZone.style.pointerEvents = 'none';
+    dropZone.classList.add('opacity-50');
+}
+
+function resetForm() {
+    selectedFile = null;
+    document.getElementById('file-input').value = '';
+    document.getElementById('drop-zone-idle').classList.remove('hidden');
+    document.getElementById('drop-zone-selected').classList.add('hidden');
+    document.getElementById('progress-area').classList.add('hidden');
+    document.getElementById('btn-analyze').disabled = true;
+    document.getElementById('btn-analyze').textContent = 'Analyze';
+    document.getElementById('btn-reset').classList.add('hidden');
+    document.getElementById('result').innerHTML = '';
+
+    const dropZone = document.getElementById('drop-zone');
+    dropZone.style.pointerEvents = '';
+    dropZone.classList.remove('opacity-50');
+}
+
+function showError(msg) {
+    document.getElementById('result').innerHTML =
+        '<div class="bg-red-50 border border-red-200 rounded-lg p-4 mt-4">' +
+        '<div class="flex items-center gap-2 text-red-700">' +
+        '<svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' +
+        '<span>' + msg + '</span>' +
+        '</div></div>';
+}
+</script>
+{% endblock %}

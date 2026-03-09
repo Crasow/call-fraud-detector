@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Call {{ call.filename }} — Call Fraud Detector{% endblock %}
+{% block content %}
+<div class="mb-4">
+    <a href="/calls" class="text-blue-600 hover:underline">&larr; Back to calls</a>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-1 space-y-4">
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold mb-4">Call Info</h2>
+            <dl class="space-y-2 text-sm">
+                <div><dt class="text-gray-500">File</dt><dd class="font-medium">{{ call.filename }}</dd></div>
+                <div><dt class="text-gray-500">Format</dt><dd>{{ call.audio_format }}</dd></div>
+                <div><dt class="text-gray-500">Source</dt><dd>{{ call.source }}</dd></div>
+                <div><dt class="text-gray-500">Date</dt><dd>{{ call.created_at.strftime('%Y-%m-%d %H:%M:%S') if call.created_at else '—' }}</dd></div>
+            </dl>
+        </div>
+
+        {% if result %}
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold mb-4">Fraud Analysis</h2>
+            <div class="mb-4">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-sm text-gray-500">Fraud Score</span>
+                    <span class="text-lg font-bold {% if result.fraud_score > 0.7 %}text-red-600{% elif result.fraud_score > 0.3 %}text-yellow-600{% else %}text-green-600{% endif %}">
+                        {{ '%.0f' % (result.fraud_score * 100) }}%
+                    </span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-3">
+                    <div class="h-3 rounded-full {% if result.fraud_score > 0.7 %}bg-red-500{% elif result.fraud_score > 0.3 %}bg-yellow-500{% else %}bg-green-500{% endif %}"
+                         style="width: {{ (result.fraud_score * 100)|int }}%"></div>
+                </div>
+            </div>
+            <div class="mb-4">
+                {% if result.is_fraud %}
+                <span class="px-3 py-1 text-sm font-semibold rounded-full bg-red-100 text-red-800">Fraud Detected</span>
+                {% else %}
+                <span class="px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">Clean</span>
+                {% endif %}
+            </div>
+
+            {% if result.fraud_categories %}
+            <div class="mb-4">
+                <h3 class="text-sm font-medium text-gray-500 mb-2">Categories</h3>
+                <div class="flex flex-wrap gap-1">
+                    {% for cat in result.fraud_categories %}
+                    <span class="px-2 py-1 text-xs bg-red-50 text-red-700 rounded">{{ cat }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if result.reasons %}
+            <div>
+                <h3 class="text-sm font-medium text-gray-500 mb-2">Reasons</h3>
+                <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+                    {% for reason in result.reasons %}
+                    <li>{{ reason }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="lg:col-span-2">
+        {% if result and result.transcript %}
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold mb-4">Transcript</h2>
+            <div class="prose prose-sm max-w-none whitespace-pre-wrap text-gray-700">{{ result.transcript }}</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

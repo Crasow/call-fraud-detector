@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: call_fraud_detector
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  migrate:
+    build: .
+    command: uv run alembic upgrade head
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/call_fraud_detector
+
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/call_fraud_detector
+      GEMINI_PROXY_URL: ${GEMINI_PROXY_URL:-http://host.docker.internal:8000}
+      GEMINI_PROJECT_ID: ${GEMINI_PROJECT_ID}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_LOCATION: ${GEMINI_LOCATION:-us-central1}
+      UPLOAD_DIR: /app/uploads
+      WATCH_DIR: /app/watch
+    volumes:
+      - uploads:/app/uploads
+      - watch:/app/watch
+
+volumes:
+  pgdata:
+  uploads:
+  watch:
