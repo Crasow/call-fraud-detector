@@ -56,4 +56,19 @@
     </details>
     {% endif %}
 </div>
+{% elif call and call.status in ('pending', 'processing') %}
+<div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mt-4"
+     hx-get="/calls/{{ call.id }}/status"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML">
+    <div class="flex items-center gap-3">
+        <div class="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+        <div>
+            <h3 class="font-semibold text-blue-800">
+                {% if call.status == 'pending' %}In queue...{% else %}Analyzing with Gemini...{% endif %}
+            </h3>
+            <p class="text-sm text-blue-600 mt-1">{{ call.filename }}</p>
+        </div>
+    </div>
+</div>
 {% endif %}

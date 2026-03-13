@@ -6,8 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from call_fraud_detector.analyzer import analyze_bytes
-from call_fraud_detector.audio import SUPPORTED_EXTENSIONS
+from call_fraud_detector.audio import SUPPORTED_EXTENSIONS, get_audio_format
 from call_fraud_detector.config import settings
 from call_fraud_detector.database import get_session
 from call_fraud_detector.models import AnalysisResult, Call
@@ -23,6 +22,8 @@ def _call_to_dict(call: Call) -> dict:
         "source": call.source,
         "file_path": call.file_path,
         "duration_seconds": call.duration_seconds,
+        "status": call.status,
+        "error_message": call.error_message,
         "created_at": call.created_at.isoformat() if call.created_at else None,
     }
     if call.analysis:
@@ -38,17 +39,34 @@ def _call_to_dict(call: Call) -> dict:
     return d
 
 
-@router.post("/calls/analyze")
-async def analyze_call(file: UploadFile, session: AsyncSession = Depends(get_session)):
+async def _create_pending_call(file: UploadFile, source: str, session: AsyncSession) -> Call:
     ext = Path(file.filename or "").suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
         raise HTTPException(400, f"Unsupported format: {ext}. Supported: {SUPPORTED_EXTENSIONS}")
 
     data = await file.read()
     save_path = Path(settings.upload_dir) / f"{uuid.uuid4()}{ext}"
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    save_path.write_bytes(data)
 
-    call, result = await analyze_bytes(data, file.filename or "unknown", "api", session, save_path)
-    return _call_to_dict(call)
+    call = Call(
+        id=uuid.uuid4(),
+        filename=file.filename or "unknown",
+        audio_format=get_audio_format(file.filename or "unknown"),
+        source=source,
+        file_path=str(save_path),
+        status="pending",
+    )
+    session.add(call)
+    await session.commit()
+    await session.refresh(call)
+    return call
+
+
+@router.post("/calls/analyze")
+async def analyze_call(file: UploadFile, session: AsyncSession = Depends(get_session)):
+    call = await _create_pending_call(file, "api", session)
+    return {"id": str(call.id), "status": "pending"}
 
 
 @router.get("/calls")
@@ -110,12 +128,5 @@ async def get_stats(session: AsyncSession = Depends(get_session)):
 
 @router.post("/webhook/call")
 async def webhook_call(file: UploadFile, session: AsyncSession = Depends(get_session)):
-    ext = Path(file.filename or "").suffix.lower()
-    if ext not in SUPPORTED_EXTENSIONS:
-        raise HTTPException(400, f"Unsupported format: {ext}")
-
-    data = await file.read()
-    save_path = Path(settings.upload_dir) / f"{uuid.uuid4()}{ext}"
-
-    call, result = await analyze_bytes(data, file.filename or "unknown", "api", session, save_path)
-    return _call_to_dict(call)
+    call = await _create_pending_call(file, "webhook", session)
+    return {"id": str(call.id), "status": "pending"}

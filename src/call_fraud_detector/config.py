@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     gemini_location: str = "us-central1"
     watch_dir: Path = Path("./watch")
     upload_dir: Path = Path("./uploads")
+    worker_concurrency: int = 5
 
 
 settings = Settings()

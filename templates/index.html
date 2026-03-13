@@ -133,12 +133,12 @@ function startUpload() {
     });
 
     xhr.upload.addEventListener('load', function() {
-        // Upload done, now server is analyzing
+        // Upload done, queued for processing
         progressBar.style.width = '100%';
         progressPct.textContent = '100%';
-        progressBar.className = 'h-2.5 rounded-full bg-yellow-500 transition-all duration-300 animate-pulse';
-        progressLabel.textContent = 'Analyzing audio with Gemini...';
-        btnAnalyze.textContent = 'Analyzing...';
+        progressBar.className = 'h-2.5 rounded-full bg-green-500 transition-all duration-300';
+        progressLabel.textContent = 'Uploaded! Queued for analysis.';
+        btnAnalyze.textContent = 'Queued';
     });
 
     xhr.addEventListener('load', function() {

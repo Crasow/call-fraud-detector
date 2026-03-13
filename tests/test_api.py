@@ -11,7 +11,8 @@ from call_fraud_detector.models import AnalysisResult, Call
 
 @pytest.fixture
 def app():
-    return create_app()
+    with patch("call_fraud_detector.app.worker_loop", new_callable=AsyncMock):
+        yield create_app()
 
 
 @pytest.fixture
@@ -21,39 +22,31 @@ async def client(app):
         yield c
 
 
-def _make_call_and_result():
-    call_id = uuid.uuid4()
+def _make_pending_call():
     call = Call(
-        id=call_id,
+        id=uuid.uuid4(),
         filename="test.wav",
         audio_format="wav",
         source="api",
+        status="pending",
         created_at=datetime.now(UTC),
     )
-    result = AnalysisResult(
-        id=uuid.uuid4(),
-        call_id=call_id,
-        transcript="Hello",
-        is_fraud=True,
-        fraud_score=0.85,
-        fraud_categories=["Vishing"],
-        reasons=["Suspicious"],
-        analyzed_at=datetime.now(UTC),
-    )
-    call.analysis = result
-    return call, result
+    return call
 
 
 @pytest.mark.asyncio
 async def test_analyze_endpoint(client):
-    call, result = _make_call_and_result()
+    call = _make_pending_call()
 
-    with patch("call_fraud_detector.api.analyze_bytes", new_callable=AsyncMock, return_value=(call, result)):
+    async def fake_create(file, source, session):
+        return call
+
+    with patch("call_fraud_detector.api._create_pending_call", new_callable=AsyncMock, return_value=call):
         resp = await client.post(
             "/api/v1/calls/analyze",
             files={"file": ("test.wav", b"fake audio", "audio/wav")},
         )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["filename"] == "test.wav"
-    assert data["analysis"]["is_fraud"] is True
+    assert data["id"] == str(call.id)
+    assert data["status"] == "pending"

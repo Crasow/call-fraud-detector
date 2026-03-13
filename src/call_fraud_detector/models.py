@@ -19,6 +19,8 @@ class Call(Base):
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="upload")
     file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
     analysis: Mapped["AnalysisResult | None"] = relationship(back_populates="call", uselist=False, cascade="all, delete-orphan")

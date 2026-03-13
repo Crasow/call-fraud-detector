@@ -50,6 +50,34 @@ def _parse_gemini_response(raw: dict) -> dict:
     return json.loads(text)
 
 
+async def analyze_call(call: Call, session: AsyncSession) -> AnalysisResult:
+    """Analyze an existing Call record (used by the background worker)."""
+    if call.file_path:
+        audio_b64 = encode_audio_base64(Path(call.file_path))
+    else:
+        raise ValueError("Call has no file_path")
+
+    mime_type = get_mime_type(call.filename)
+    raw_response = await generate_content(audio_b64, mime_type, ANALYSIS_PROMPT)
+    parsed = _parse_gemini_response(raw_response)
+
+    result = AnalysisResult(
+        id=uuid.uuid4(),
+        call_id=call.id,
+        transcript=parsed.get("transcript"),
+        is_fraud=parsed.get("is_fraud", False),
+        fraud_score=parsed.get("fraud_score", 0.0),
+        fraud_categories=parsed.get("fraud_categories", []),
+        reasons=parsed.get("reasons", []),
+        raw_response=raw_response,
+        analyzed_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    session.add(result)
+    await session.commit()
+    await session.refresh(result)
+    return result
+
+
 async def analyze_file(
     file_path: Path,
     source: str,

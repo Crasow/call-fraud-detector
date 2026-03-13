@@ -11,8 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from call_fraud_detector.analyzer import analyze_bytes
-from call_fraud_detector.audio import SUPPORTED_EXTENSIONS
+from call_fraud_detector.audio import SUPPORTED_EXTENSIONS, get_audio_format
 from call_fraud_detector.config import settings
 from call_fraud_detector.database import get_session
 from call_fraud_detector.models import AnalysisResult, Call
@@ -48,20 +47,38 @@ async def upload_file(request: Request, file: UploadFile, session: AsyncSession 
 
     data = await file.read()
     save_path = Path(settings.upload_dir) / f"{uuid.uuid4()}{ext}"
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    save_path.write_bytes(data)
 
-    try:
-        call, result = await analyze_bytes(data, file.filename or "unknown", "upload", session, save_path)
-    except Exception as e:
-        logger.exception("Analysis failed for %s", file.filename)
-        return templates.TemplateResponse("partials/analysis_result.html", {
-            "request": request,
-            "error": str(e),
-        })
+    call = Call(
+        id=uuid.uuid4(),
+        filename=file.filename or "unknown",
+        audio_format=get_audio_format(file.filename or "unknown"),
+        source="upload",
+        file_path=str(save_path),
+        status="pending",
+    )
+    session.add(call)
+    await session.commit()
+    await session.refresh(call)
 
     return templates.TemplateResponse("partials/analysis_result.html", {
         "request": request,
         "call": call,
-        "result": result,
+    })
+
+
+@router.get("/calls/{call_id}/status", response_class=HTMLResponse)
+async def call_status(request: Request, call_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+    query = select(Call).options(joinedload(Call.analysis)).where(Call.id == call_id)
+    call = (await session.execute(query)).unique().scalar_one_or_none()
+    if not call:
+        return HTMLResponse("Call not found", status_code=404)
+    return templates.TemplateResponse("partials/analysis_result.html", {
+        "request": request,
+        "call": call,
+        "result": call.analysis if call.status == "done" else None,
+        "error": call.error_message if call.status == "error" else None,
     })
 
 
