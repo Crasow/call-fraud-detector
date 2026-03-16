@@ -30,7 +30,9 @@ async def process_call(call_id, semaphore: asyncio.Semaphore) -> None:
                     except Exception:
                         logger.exception("Failed to send fraud alert email for call %s", call_id)
 
-                call.status = "done"
+                await session.execute(
+                    update(Call).where(Call.id == call_id).values(status="done")
+                )
                 await session.commit()
             except Exception as e:
                 await session.rollback()
