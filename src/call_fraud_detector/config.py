@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     watch_dir: Path = Path("./watch")
     upload_dir: Path = Path("./uploads")
     worker_concurrency: int = 5
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    alert_email_to: str = ""
 
 
 settings = Settings()

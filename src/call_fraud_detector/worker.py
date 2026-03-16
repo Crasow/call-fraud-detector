@@ -7,6 +7,7 @@ from call_fraud_detector.analyzer import analyze_call
 from call_fraud_detector.config import settings
 from call_fraud_detector.database import async_session
 from call_fraud_detector.models import Call
+from call_fraud_detector.notifications import send_fraud_alert
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,13 @@ async def process_call(call_id, semaphore: asyncio.Semaphore) -> None:
                 await session.commit()
 
                 call = (await session.execute(select(Call).where(Call.id == call_id))).scalar_one()
-                await analyze_call(call, session)
+                result = await analyze_call(call, session)
+
+                if result.is_fraud:
+                    try:
+                        await send_fraud_alert(call, result)
+                    except Exception:
+                        logger.exception("Failed to send fraud alert email for call %s", call_id)
 
                 call.status = "done"
                 await session.commit()

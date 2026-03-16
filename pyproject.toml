@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.18",
     "watchdog>=6.0",
     "psycopg2-binary>=2.9",
+    "aiosmtplib>=3.0",
 ]
 
 [project.scripts]
