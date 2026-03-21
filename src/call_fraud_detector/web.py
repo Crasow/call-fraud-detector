@@ -22,6 +22,11 @@ from call_fraud_detector.models import AnalysisResult, Call, Profile
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / "templates"))
 templates.env.filters["prettyjson"] = lambda v: _json.dumps(v, indent=2, ensure_ascii=False)
+templates.env.filters["keyname"] = lambda k: k.replace("_", " ").title()
+templates.env.tests["list_value"] = lambda v: isinstance(v, list)
+templates.env.tests["dict_value"] = lambda v: isinstance(v, dict)
+templates.env.tests["bool_value"] = lambda v: isinstance(v, bool)
+templates.env.tests["number_value"] = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
 @router.get("/", response_class=HTMLResponse)

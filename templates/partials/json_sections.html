@@ -1,0 +1,55 @@
+{% macro render_field(key, value) %}
+{% if value is bool_value %}
+<div class="flex items-center justify-between py-2 border-b border-gray-100">
+    <span class="text-sm text-gray-500">{{ key | keyname }}</span>
+    {% if value %}
+    <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">Yes</span>
+    {% else %}
+    <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-800">No</span>
+    {% endif %}
+</div>
+{% elif value is number_value %}
+<div class="flex items-center justify-between py-2 border-b border-gray-100">
+    <span class="text-sm text-gray-500">{{ key | keyname }}</span>
+    {% if value is number_value and value >= 0 and value <= 1 %}
+    <div class="flex items-center gap-2">
+        <div class="w-20 bg-gray-200 rounded-full h-2">
+            <div class="h-2 rounded-full {% if value > 0.7 %}bg-green-500{% elif value > 0.3 %}bg-yellow-500{% else %}bg-gray-400{% endif %}"
+                 style="width: {{ (value * 100)|int }}%"></div>
+        </div>
+        <span class="text-sm font-bold">{{ '%.0f' % (value * 100) }}%</span>
+    </div>
+    {% else %}
+    <span class="text-sm font-bold text-gray-900">{{ value }}</span>
+    {% endif %}
+</div>
+{% elif value is string and value | length > 200 %}
+<div class="py-2 border-b border-gray-100">
+    <span class="text-sm text-gray-500">{{ key | keyname }}</span>
+    <div class="mt-1 p-3 bg-gray-50 rounded text-sm text-gray-700 whitespace-pre-wrap">{{ value }}</div>
+</div>
+{% elif value is string %}
+<div class="flex items-center justify-between py-2 border-b border-gray-100">
+    <span class="text-sm text-gray-500">{{ key | keyname }}</span>
+    <span class="text-sm text-gray-900 text-right max-w-[60%]">{{ value }}</span>
+</div>
+{% elif value is list_value %}
+<div class="py-2 border-b border-gray-100">
+    <span class="text-sm text-gray-500">{{ key | keyname }}</span>
+    <ul class="mt-1 list-disc list-inside text-sm text-gray-700 space-y-1">
+        {% for item in value %}
+        <li>{{ item }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% elif value is dict_value %}
+<div class="py-2 border-b border-gray-100">
+    <span class="text-sm text-gray-500">{{ key | keyname }}</span>
+    <div class="mt-1 flex flex-wrap gap-2">
+        {% for k, v in value.items() %}
+        <span class="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">{{ k }}: <strong>{{ v }}</strong></span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endmacro %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/json_sections.html" import render_field %}
 {% block title %}Call {{ call.filename }} — Call Fraud Detector{% endblock %}
 {% block content %}
 <div class="mb-4">
@@ -73,15 +74,19 @@
         {% endif %}
     </div>
 
-    <div class="lg:col-span-2">
+    <div class="lg:col-span-2 space-y-6">
         {% if call.profile and result and result.raw_response %}
-        <div class="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 class="text-lg font-semibold mb-4">Raw Response</h2>
-            <pre class="bg-gray-50 rounded p-4 text-sm text-gray-700 overflow-x-auto whitespace-pre-wrap">{{ result.raw_response | prettyjson }}</pre>
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold mb-4">Results</h2>
+            <div class="divide-y divide-gray-100">
+                {% for key, value in result.raw_response.items() %}
+                {{ render_field(key, value) }}
+                {% endfor %}
+            </div>
         </div>
         {% endif %}
 
-        {% if result and result.transcript %}
+        {% if not call.profile and result and result.transcript %}
         <div class="bg-white rounded-lg shadow p-6">
             <h2 class="text-lg font-semibold mb-4">Transcript</h2>
             <div class="prose prose-sm max-w-none whitespace-pre-wrap text-gray-700">{{ result.transcript }}</div>
