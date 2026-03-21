@@ -24,6 +24,7 @@ services:
 
   app:
     build: .
+    command: uv run uvicorn call_fraud_detector.app:create_app --factory --host 0.0.0.0 --port 8080 --reload --reload-dir /app/src --reload-dir /app/templates
     ports:
       - "8080:8080"
     depends_on:
@@ -47,6 +48,10 @@ services:
     volumes:
       - uploads:/app/uploads
       - watch:/app/watch
+      - ./src:/app/src
+      - ./templates:/app/templates
+      - ./static:/app/static
+      - ./alembic:/app/alembic
 
 volumes:
   pgdata:
