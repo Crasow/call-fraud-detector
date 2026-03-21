@@ -10,6 +10,28 @@ class Base(DeclarativeBase):
     pass
 
 
+class Profile(Base):
+    __tablename__ = "profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prompt_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="custom")
+    custom_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expert: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    main_task: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fields_for_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trigger_words: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(UTC).replace(tzinfo=None),
+    )
+
+    calls: Mapped[list["Call"]] = relationship(back_populates="profile")
+
+
 class Call(Base):
     __tablename__ = "calls"
 
@@ -21,9 +43,13 @@ class Call(Base):
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
     analysis: Mapped["AnalysisResult | None"] = relationship(back_populates="call", uselist=False, cascade="all, delete-orphan")
+    profile: Mapped["Profile | None"] = relationship(back_populates="calls")
 
 
 class AnalysisResult(Base):
