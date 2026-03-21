@@ -74,6 +74,13 @@
     </div>
 
     <div class="lg:col-span-2">
+        {% if call.profile and result and result.raw_response %}
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">Raw Response</h2>
+            <pre class="bg-gray-50 rounded p-4 text-sm text-gray-700 overflow-x-auto whitespace-pre-wrap">{{ result.raw_response | tojson(indent=2) }}</pre>
+        </div>
+        {% endif %}
+
         {% if result and result.transcript %}
         <div class="bg-white rounded-lg shadow p-6">
             <h2 class="text-lg font-semibold mb-4">Transcript</h2>
