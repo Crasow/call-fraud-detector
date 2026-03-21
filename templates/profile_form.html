@@ -79,10 +79,10 @@ Respond in JSON format:
             <div id="template-fields" class="{{ '' if profile and profile.prompt_mode == 'template' else 'hidden' }}">
                 <div class="space-y-3">
                     <div>
-                        <label for="expert" class="block text-sm font-medium text-gray-700 mb-1">Expert Role *</label>
+                        <label for="expert" class="block text-sm font-medium text-gray-700 mb-1">Expert Role</label>
                         <input type="text" name="expert" id="expert"
                                value="{{ profile.expert or '' if profile else '' }}"
-                               placeholder="e.g. medical diagnostics"
+                               placeholder="Default: phone call analysis"
                                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
                     </div>
                     <div>

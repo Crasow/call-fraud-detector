@@ -181,8 +181,8 @@ def profile_create(
     if prompt_mode not in ("custom", "template"):
         typer.echo("Error: prompt_mode must be 'custom' or 'template'")
         raise typer.Exit(1)
-    if prompt_mode == "template" and (not expert or not main_task):
-        typer.echo("Error: template mode requires --expert and --main-task")
+    if prompt_mode == "template" and not main_task:
+        typer.echo("Error: template mode requires --main-task")
         raise typer.Exit(1)
 
     async def _do():

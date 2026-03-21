@@ -103,8 +103,8 @@ async def create_profile(
 ):
     if prompt_mode not in ("custom", "template"):
         raise HTTPException(400, "prompt_mode must be 'custom' or 'template'")
-    if prompt_mode == "template" and (not expert or not main_task):
-        raise HTTPException(400, "Template mode requires 'expert' and 'main_task' fields")
+    if prompt_mode == "template" and not main_task:
+        raise HTTPException(400, "Template mode requires 'main_task' field")
 
     tw_list = [w.strip() for w in trigger_words.split(",") if w.strip()] if trigger_words else None
 
@@ -177,8 +177,8 @@ async def update_profile(
         profile.trigger_words = [w.strip() for w in trigger_words.split(",") if w.strip()] if trigger_words else None
 
     effective_mode = prompt_mode or profile.prompt_mode
-    if effective_mode == "template" and (not profile.expert or not profile.main_task):
-        raise HTTPException(400, "Template mode requires 'expert' and 'main_task' fields")
+    if effective_mode == "template" and not profile.main_task:
+        raise HTTPException(400, "Template mode requires 'main_task' field")
 
     await session.commit()
     await session.refresh(profile)

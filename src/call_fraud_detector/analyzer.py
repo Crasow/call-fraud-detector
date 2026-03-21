@@ -56,8 +56,9 @@ def build_prompt(profile: Profile | None) -> str:
 
     if profile.prompt_mode == "custom" and profile.custom_prompt:
         prompt = profile.custom_prompt
-    elif profile.prompt_mode == "template" and profile.expert and profile.main_task:
-        parts = [f"Ты эксперт в {profile.expert}. {profile.main_task}."]
+    elif profile.prompt_mode == "template" and profile.main_task:
+        expert = profile.expert or "анализ телефонных разговоров"
+        parts = [f"Ты эксперт в {expert}. {profile.main_task}."]
         if profile.fields_for_json:
             parts.append(f"Верни ответ в формате JSON с полями: {profile.fields_for_json}.")
         prompt = " ".join(parts)

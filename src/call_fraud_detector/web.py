@@ -249,11 +249,11 @@ async def profile_update(
             "profile": profile,
             "error": "prompt_mode must be 'custom' or 'template'",
         })
-    if prompt_mode == "template" and (not expert.strip() or not main_task.strip()):
+    if prompt_mode == "template" and not main_task.strip():
         return templates.TemplateResponse("profile_form.html", {
             "request": request,
             "profile": profile,
-            "error": "Template mode requires 'expert' and 'main_task' fields",
+            "error": "Template mode requires 'main_task' field",
         })
 
     profile.name = name.strip()
