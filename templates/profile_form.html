@@ -55,6 +55,25 @@
                 <textarea name="custom_prompt" id="custom_prompt" rows="6"
                           class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                           placeholder="Enter your analysis prompt...">{{ profile.custom_prompt or '' if profile else '' }}</textarea>
+                <details class="mt-2">
+                    <summary class="cursor-pointer text-xs text-blue-600 hover:underline">Show example prompt</summary>
+                    <pre class="mt-2 p-3 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700 whitespace-pre-wrap">You are a quality assurance expert. Analyze this audio recording of a customer service call and provide:
+
+1. A full transcript of the call
+2. Overall quality score from 0.0 (terrible) to 1.0 (excellent)
+3. Whether the agent followed the greeting script
+4. Tone assessment (friendly, neutral, rude)
+5. Key issues or complaints raised by the customer
+
+Respond in JSON format:
+{
+    "transcript": "full transcript",
+    "quality_score": 0.0-1.0,
+    "greeting_followed": true/false,
+    "tone": "friendly",
+    "issues": ["issue1", "issue2"]
+}</pre>
+                </details>
             </div>
 
             <div id="template-fields" class="{{ '' if profile and profile.prompt_mode == 'template' else 'hidden' }}">
