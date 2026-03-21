@@ -23,6 +23,24 @@ router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / "templates"))
 templates.env.filters["prettyjson"] = lambda v: _json.dumps(v, indent=2, ensure_ascii=False)
 templates.env.filters["keyname"] = lambda k: k.replace("_", " ").title()
+
+
+def _extract_parsed(raw: dict) -> dict:
+    """Extract parsed model JSON from raw_response, handling both old (full API) and new (parsed) formats."""
+    if "candidates" in raw:
+        try:
+            text = raw["candidates"][0]["content"]["parts"][0]["text"]
+            text = text.strip()
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1]
+                text = text.rsplit("```", 1)[0]
+            return _json.loads(text)
+        except (KeyError, IndexError, _json.JSONDecodeError):
+            return raw
+    return raw
+
+
+templates.env.filters["extract_parsed"] = _extract_parsed
 templates.env.tests["list_value"] = lambda v: isinstance(v, list)
 templates.env.tests["dict_value"] = lambda v: isinstance(v, dict)
 templates.env.tests["bool_value"] = lambda v: isinstance(v, bool)

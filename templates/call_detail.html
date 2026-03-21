@@ -76,10 +76,11 @@
 
     <div class="lg:col-span-2 space-y-6">
         {% if call.profile and result and result.raw_response %}
+        {% set parsed = result.raw_response | extract_parsed %}
         <div class="bg-white rounded-lg shadow p-6">
             <h2 class="text-lg font-semibold mb-4">Results</h2>
             <div class="divide-y divide-gray-100">
-                {% for key, value in result.raw_response.items() %}
+                {% for key, value in parsed.items() %}
                 {{ render_field(key, value) }}
                 {% endfor %}
             </div>
