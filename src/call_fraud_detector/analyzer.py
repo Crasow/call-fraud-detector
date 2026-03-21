@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,7 @@ from call_fraud_detector.audio import (
     get_mime_type,
 )
 from call_fraud_detector.gemini_client import generate_content
-from call_fraud_detector.models import AnalysisResult, Call
+from call_fraud_detector.models import AnalysisResult, Call, Profile
 
 ANALYSIS_PROMPT = """\
 You are a phone call fraud detection expert. Analyze this audio recording and provide:
@@ -45,6 +46,39 @@ Respond in JSON format:
 """
 
 
+def build_prompt(profile: Profile | None) -> str:
+    """Build analysis prompt based on the profile configuration."""
+    if profile is None:
+        return ANALYSIS_PROMPT
+
+    prompt = None
+    trigger_words = profile.trigger_words or []
+
+    if profile.prompt_mode == "custom" and profile.custom_prompt:
+        prompt = profile.custom_prompt
+    elif profile.prompt_mode == "template" and profile.expert and profile.main_task:
+        parts = [f"Ты эксперт в {profile.expert}. {profile.main_task}."]
+        if profile.fields_for_json:
+            parts.append(f"Верни ответ в формате JSON с полями: {profile.fields_for_json}.")
+        prompt = " ".join(parts)
+
+    if prompt and trigger_words:
+        words = ", ".join(trigger_words)
+        prompt += f"\n\nТакже найди совпадения для слов: {words}"
+        return prompt
+    elif prompt:
+        return prompt
+    elif trigger_words:
+        words = ", ".join(trigger_words)
+        return (
+            f"Проанализируй аудиозапись. Найди совпадения и контекст для слов: {words}. "
+            "Верни JSON с полями: transcript, matches."
+        )
+
+    # Fallback: profile exists but no prompt and no trigger words
+    return ANALYSIS_PROMPT
+
+
 def _parse_gemini_response(raw: dict) -> dict:
     text = raw["candidates"][0]["content"]["parts"][0]["text"]
     # Strip markdown code fences if present
@@ -63,7 +97,8 @@ async def analyze_call(call: Call, session: AsyncSession) -> AnalysisResult:
         raise ValueError("Call has no file_path")
 
     mime_type = get_mime_type(call.filename)
-    raw_response = await generate_content(audio_b64, mime_type, ANALYSIS_PROMPT)
+    prompt = build_prompt(call.profile)
+    raw_response = await generate_content(audio_b64, mime_type, prompt)
     parsed = _parse_gemini_response(raw_response)
 
     result = AnalysisResult(
@@ -87,13 +122,20 @@ async def analyze_file(
     file_path: Path,
     source: str,
     session: AsyncSession,
+    profile_id: uuid.UUID | None = None,
 ) -> tuple[Call, AnalysisResult]:
     filename = file_path.name
     audio_format = get_audio_format(filename)
     mime_type = get_mime_type(filename)
     audio_b64 = encode_audio_base64(file_path)
 
-    raw_response = await generate_content(audio_b64, mime_type, ANALYSIS_PROMPT)
+    # Load profile if specified
+    profile = None
+    if profile_id:
+        profile = (await session.execute(select(Profile).where(Profile.id == profile_id))).scalar_one_or_none()
+
+    prompt = build_prompt(profile)
+    raw_response = await generate_content(audio_b64, mime_type, prompt)
     parsed = _parse_gemini_response(raw_response)
 
     call = Call(
@@ -102,6 +144,7 @@ async def analyze_file(
         audio_format=audio_format,
         source=source,
         file_path=str(file_path),
+        profile_id=profile_id,
     )
     session.add(call)
 
@@ -130,6 +173,7 @@ async def analyze_bytes(
     source: str,
     session: AsyncSession,
     save_path: Path | None = None,
+    profile_id: uuid.UUID | None = None,
 ) -> tuple[Call, AnalysisResult]:
     if save_path:
         save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -141,8 +185,14 @@ async def analyze_bytes(
     audio_b64 = encode_bytes_base64(data)
     logger.warning("Base64 encoded size: %d bytes", len(audio_b64))
 
+    # Load profile if specified
+    profile = None
+    if profile_id:
+        profile = (await session.execute(select(Profile).where(Profile.id == profile_id))).scalar_one_or_none()
+
+    prompt = build_prompt(profile)
     logger.warning("Calling Gemini...")
-    raw_response = await generate_content(audio_b64, mime_type, ANALYSIS_PROMPT)
+    raw_response = await generate_content(audio_b64, mime_type, prompt)
     logger.warning("Gemini returned, parsing response...")
     parsed = _parse_gemini_response(raw_response)
     logger.warning("Parsed result: is_fraud=%s, score=%s", parsed.get("is_fraud"), parsed.get("fraud_score"))
@@ -153,6 +203,7 @@ async def analyze_bytes(
         audio_format=get_audio_format(filename),
         source=source,
         file_path=str(save_path) if save_path else None,
+        profile_id=profile_id,
     )
     session.add(call)
 

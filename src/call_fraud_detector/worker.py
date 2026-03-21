@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from sqlalchemy import select, update
+from sqlalchemy.orm import joinedload
 
 from call_fraud_detector.analyzer import analyze_call
 from call_fraud_detector.config import settings
@@ -21,7 +22,9 @@ async def process_call(call_id, semaphore: asyncio.Semaphore) -> None:
                 )
                 await session.commit()
 
-                call = (await session.execute(select(Call).where(Call.id == call_id))).scalar_one()
+                call = (await session.execute(
+                    select(Call).options(joinedload(Call.profile)).where(Call.id == call_id)
+                )).scalar_one()
                 result = await analyze_call(call, session)
 
                 if result.is_fraud:
