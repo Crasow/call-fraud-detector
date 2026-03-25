@@ -1,17 +1,20 @@
+import csv
+import io
 import uuid
-from pathlib import Path
+from datetime import datetime, timedelta, UTC
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import StreamingResponse
+from sqlalchemy import cast, func, select, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from call_analyzer.audio import SUPPORTED_EXTENSIONS, get_audio_format
-from call_analyzer.config import settings
+from call_analyzer.auth import verify_api_key
 from call_analyzer.database import get_session
 from call_analyzer.models import AnalysisResult, Call, Profile, ProfileResult
+from call_analyzer.services import FileTooLargeError, UnsupportedFormatError, save_uploaded_file
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 
 
 def _call_to_dict(call: Call) -> dict:
@@ -70,28 +73,12 @@ async def _create_pending_call(
     session: AsyncSession,
     profile_id: uuid.UUID | None = None,
 ) -> Call:
-    ext = Path(file.filename or "").suffix.lower()
-    if ext not in SUPPORTED_EXTENSIONS:
-        raise HTTPException(400, f"Unsupported format: {ext}. Supported: {SUPPORTED_EXTENSIONS}")
-
-    data = await file.read()
-    save_path = Path(settings.upload_dir) / f"{uuid.uuid4()}{ext}"
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    save_path.write_bytes(data)
-
-    call = Call(
-        id=uuid.uuid4(),
-        filename=file.filename or "unknown",
-        audio_format=get_audio_format(file.filename or "unknown"),
-        source=source,
-        file_path=str(save_path),
-        status="pending",
-        profile_id=profile_id,
-    )
-    session.add(call)
-    await session.commit()
-    await session.refresh(call)
-    return call
+    try:
+        return await save_uploaded_file(file, source, session, profile_id)
+    except UnsupportedFormatError as e:
+        raise HTTPException(400, str(e))
+    except FileTooLargeError as e:
+        raise HTTPException(413, str(e))
 
 
 # ── Profile CRUD ─────────────────────────────────────────────────────
@@ -206,6 +193,7 @@ async def delete_profile(profile_id: uuid.UUID, session: AsyncSession = Depends(
 
 @router.post("/calls/analyze")
 async def analyze_call(
+    request: Request,
     file: UploadFile,
     profile_id: str | None = Form(None),
     session: AsyncSession = Depends(get_session),
@@ -247,6 +235,46 @@ async def list_calls(
     }
 
 
+@router.get("/calls/export")
+async def export_calls_csv(session: AsyncSession = Depends(get_session)):
+    query = (
+        select(Call)
+        .options(joinedload(Call.analysis), joinedload(Call.profile), joinedload(Call.profile_result))
+        .order_by(Call.created_at.desc())
+    )
+    rows = (await session.execute(query)).unique().scalars().all()
+
+    def generate():
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["id", "filename", "source", "profile", "status", "is_fraud", "fraud_score", "created_at"])
+        yield output.getvalue()
+        output.seek(0)
+        output.truncate(0)
+
+        for c in rows:
+            is_fraud = ""
+            fraud_score = ""
+            if c.analysis:
+                is_fraud = str(c.analysis.is_fraud)
+                fraud_score = str(c.analysis.fraud_score)
+            writer.writerow([
+                str(c.id), c.filename, c.source,
+                c.profile.name if c.profile else "",
+                c.status, is_fraud, fraud_score,
+                c.created_at.isoformat() if c.created_at else "",
+            ])
+            yield output.getvalue()
+            output.seek(0)
+            output.truncate(0)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=calls.csv"},
+    )
+
+
 @router.get("/calls/{call_id}")
 async def get_call(call_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     query = select(Call).options(joinedload(Call.analysis), joinedload(Call.profile), joinedload(Call.profile_result)).where(Call.id == call_id)
@@ -279,6 +307,40 @@ async def get_stats(session: AsyncSession = Depends(get_session)):
         "profile_calls": profile_count,
         "average_fraud_score": round(avg_score, 3) if avg_score else 0.0,
     }
+
+
+@router.get("/stats/daily")
+async def get_daily_stats(
+    days: int = Query(30, ge=1, le=365),
+    session: AsyncSession = Depends(get_session),
+):
+    since = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
+    day_col = cast(Call.created_at, Date).label("day")
+
+    query = (
+        select(day_col, func.count(Call.id).label("total"))
+        .where(Call.created_at >= since)
+        .group_by(day_col)
+        .order_by(day_col)
+    )
+    rows = (await session.execute(query)).all()
+
+    fraud_query = (
+        select(cast(Call.created_at, Date).label("day"), func.count(Call.id).label("fraud"))
+        .join(AnalysisResult)
+        .where(Call.created_at >= since, AnalysisResult.is_fraud.is_(True))
+        .group_by(cast(Call.created_at, Date))
+    )
+    fraud_rows = {str(r.day): r.fraud for r in (await session.execute(fraud_query)).all()}
+
+    return [
+        {
+            "date": str(r.day),
+            "total": r.total,
+            "fraud": fraud_rows.get(str(r.day), 0),
+        }
+        for r in rows
+    ]
 
 
 @router.post("/webhook/call")

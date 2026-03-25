@@ -1,4 +1,5 @@
 import asyncio
+import json as _json
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -16,42 +17,77 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+def _format_result_text(result) -> str:
+    lines = []
+    if hasattr(result, "is_fraud"):
+        status = "FRAUD" if result.is_fraud else "CLEAN"
+        lines.append(f"[{status}] Score: {result.fraud_score:.0%}")
+        if result.fraud_categories:
+            lines.append(f"Categories: {', '.join(result.fraud_categories)}")
+        if result.reasons:
+            lines.append("Reasons:")
+            for r in result.reasons:
+                lines.append(f"  - {r}")
+        if result.transcript:
+            lines.append(f"\nTranscript:\n{result.transcript}")
+    else:
+        lines.append("[PROFILE] Analysis complete")
+        lines.append(_json.dumps(result.data, indent=2, ensure_ascii=False))
+    return "\n".join(lines)
+
+
+def _format_result_json(call, result) -> str:
+    d = {"call_id": str(call.id), "filename": call.filename}
+    if hasattr(result, "is_fraud"):
+        d.update({
+            "is_fraud": result.is_fraud,
+            "fraud_score": result.fraud_score,
+            "fraud_categories": result.fraud_categories,
+            "reasons": result.reasons,
+            "transcript": result.transcript,
+        })
+    else:
+        d["data"] = result.data
+        d["transcript"] = result.transcript
+    return _json.dumps(d, indent=2, ensure_ascii=False)
+
+
 @app.command()
 def analyze(
     file: Path = typer.Argument(..., help="Path to audio file"),
     profile_id: Optional[str] = typer.Option(None, "--profile-id", help="Profile UUID to use for analysis"),
+    format: str = typer.Option("text", "--format", help="Output format: text or json"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Validate file without sending to Gemini"),
 ):
     """Analyze a single audio file for fraud."""
+    from call_analyzer.config import settings
+
     if not file.exists():
         typer.echo(f"File not found: {file}")
         raise typer.Exit(1)
     if file.suffix.lower() not in SUPPORTED_EXTENSIONS:
         typer.echo(f"Unsupported format: {file.suffix}")
         raise typer.Exit(1)
+    if file.stat().st_size > settings.max_upload_size:
+        typer.echo(f"File too large: {file.stat().st_size} bytes. Max: {settings.max_upload_size} bytes")
+        raise typer.Exit(1)
+
+    if dry_run:
+        typer.echo(f"[DRY RUN] File OK: {file.name} ({file.stat().st_size} bytes)")
+        return
 
     pid = uuid.UUID(profile_id) if profile_id else None
 
     async def _do():
-        import json as _json
         from call_analyzer.analyzer import analyze_file
         from call_analyzer.database import async_session
 
         async with async_session() as session:
             call, result = await analyze_file(file, "cli", session, profile_id=pid)
-            if hasattr(result, 'is_fraud'):
-                status = "FRAUD" if result.is_fraud else "CLEAN"
-                typer.echo(f"[{status}] Score: {result.fraud_score:.0%}")
-                if result.fraud_categories:
-                    typer.echo(f"Categories: {', '.join(result.fraud_categories)}")
-                if result.reasons:
-                    typer.echo("Reasons:")
-                    for r in result.reasons:
-                        typer.echo(f"  - {r}")
-                if result.transcript:
-                    typer.echo(f"\nTranscript:\n{result.transcript}")
+            if format == "json":
+                typer.echo(_format_result_json(call, result))
             else:
-                typer.echo("[PROFILE] Analysis complete")
-                typer.echo(_json.dumps(result.data, indent=2, ensure_ascii=False))
+                typer.echo(_format_result_text(result))
 
     _run(_do())
 
@@ -60,6 +96,7 @@ def analyze(
 def analyze_dir(
     directory: Path = typer.Argument(..., help="Directory with audio files"),
     profile_id: Optional[str] = typer.Option(None, "--profile-id", help="Profile UUID to use for analysis"),
+    format: str = typer.Option("text", "--format", help="Output format: text or json"),
 ):
     """Batch analyze all audio files in a directory."""
     if not directory.is_dir():
@@ -75,20 +112,29 @@ def analyze_dir(
     pid = uuid.UUID(profile_id) if profile_id else None
 
     async def _do():
+        from rich.progress import track
+
         from call_analyzer.analyzer import analyze_file
         from call_analyzer.database import async_session
 
+        results = []
         async with async_session() as session:
-            for f in files:
+            for f in track(files, description="Analyzing..."):
                 try:
                     call, result = await analyze_file(f, "cli", session, profile_id=pid)
-                    if hasattr(result, 'is_fraud'):
-                        status = "FRAUD" if result.is_fraud else "CLEAN"
-                        typer.echo(f"  [{status}] {f.name} — {result.fraud_score:.0%}")
+                    if format == "json":
+                        results.append(_json.loads(_format_result_json(call, result)))
                     else:
-                        typer.echo(f"  [PROFILE] {f.name} — done")
+                        if hasattr(result, "is_fraud"):
+                            status = "FRAUD" if result.is_fraud else "CLEAN"
+                            typer.echo(f"  [{status}] {f.name} — {result.fraud_score:.0%}")
+                        else:
+                            typer.echo(f"  [PROFILE] {f.name} — done")
                 except Exception as e:
                     typer.echo(f"  [ERROR] {f.name}: {e}")
+
+        if format == "json":
+            typer.echo(_json.dumps(results, indent=2, ensure_ascii=False))
 
     _run(_do())
 
@@ -102,7 +148,10 @@ def watch(directory: Path = typer.Option(None, help="Directory to watch")):
 
 
 @app.command("list")
-def list_calls(limit: int = typer.Option(10, help="Number of recent calls")):
+def list_calls(
+    limit: int = typer.Option(10, help="Number of recent calls"),
+    format: str = typer.Option("text", "--format", help="Output format: text or json"),
+):
     """Show recent analysis results."""
 
     async def _do():
@@ -123,21 +172,38 @@ def list_calls(limit: int = typer.Option(10, help="Number of recent calls")):
             if not calls:
                 typer.echo("No calls found.")
                 return
-            for c in calls:
-                profile_label = f" [{c.profile.name}]" if c.profile else ""
-                if c.profile_result:
-                    typer.echo(f"[PROFILE] {c.filename}{profile_label} ({c.source}, {c.created_at})")
-                elif c.analysis:
-                    status = "FRAUD" if c.analysis.is_fraud else "CLEAN"
-                    typer.echo(f"[{status}] {c.filename}{profile_label} — {c.analysis.fraud_score:.0%} ({c.source}, {c.created_at})")
-                else:
-                    typer.echo(f"[PENDING] {c.filename}{profile_label} ({c.source}, {c.created_at})")
+
+            if format == "json":
+                items = []
+                for c in calls:
+                    d = {
+                        "id": str(c.id), "filename": c.filename, "source": c.source,
+                        "status": c.status, "created_at": c.created_at.isoformat() if c.created_at else None,
+                        "profile": c.profile.name if c.profile else None,
+                    }
+                    if c.analysis:
+                        d["is_fraud"] = c.analysis.is_fraud
+                        d["fraud_score"] = c.analysis.fraud_score
+                    items.append(d)
+                typer.echo(_json.dumps(items, indent=2, ensure_ascii=False))
+            else:
+                for c in calls:
+                    profile_label = f" [{c.profile.name}]" if c.profile else ""
+                    if c.profile_result:
+                        typer.echo(f"[PROFILE] {c.filename}{profile_label} ({c.source}, {c.created_at})")
+                    elif c.analysis:
+                        status = "FRAUD" if c.analysis.is_fraud else "CLEAN"
+                        typer.echo(f"[{status}] {c.filename}{profile_label} — {c.analysis.fraud_score:.0%} ({c.source}, {c.created_at})")
+                    else:
+                        typer.echo(f"[PENDING] {c.filename}{profile_label} ({c.source}, {c.created_at})")
 
     _run(_do())
 
 
 @app.command()
-def stats():
+def stats(
+    format: str = typer.Option("text", "--format", help="Output format: text or json"),
+):
     """Show fraud detection statistics."""
 
     async def _do():
@@ -158,11 +224,20 @@ def stats():
             ).scalar() or 0
             avg = (await session.execute(select(func.avg(AnalysisResult.fraud_score)))).scalar()
 
-            typer.echo(f"Total calls:      {total}")
-            typer.echo(f"Fraud detected:   {fraud}")
-            typer.echo(f"Clean calls:      {total - fraud - profile_count}")
-            typer.echo(f"Profile analyses: {profile_count}")
-            typer.echo(f"Avg fraud score:  {avg:.1%}" if avg else "Avg fraud score:  N/A")
+            if format == "json":
+                typer.echo(_json.dumps({
+                    "total_calls": total,
+                    "fraud_calls": fraud,
+                    "clean_calls": total - fraud - profile_count,
+                    "profile_calls": profile_count,
+                    "avg_fraud_score": round(avg, 3) if avg else None,
+                }, indent=2))
+            else:
+                typer.echo(f"Total calls:      {total}")
+                typer.echo(f"Fraud detected:   {fraud}")
+                typer.echo(f"Clean calls:      {total - fraud - profile_count}")
+                typer.echo(f"Profile analyses: {profile_count}")
+                typer.echo(f"Avg fraud score:  {avg:.1%}" if avg else "Avg fraud score:  N/A")
 
     _run(_do())
 

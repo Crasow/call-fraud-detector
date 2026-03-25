@@ -80,14 +80,54 @@ def build_prompt(profile: Profile | None) -> str:
     return ANALYSIS_PROMPT
 
 
-def _parse_gemini_response(raw: dict) -> dict:
-    text = raw["candidates"][0]["content"]["parts"][0]["text"]
+def _parse_gemini_response(raw: dict, require_fraud_fields: bool = False) -> dict:
+    try:
+        text = raw["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError, TypeError) as e:
+        raise ValueError(f"Unexpected Gemini response structure: {e}") from e
+
     # Strip markdown code fences if present
     text = text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1]  # remove first line (```json)
         text = text.rsplit("```", 1)[0]  # remove closing ```
-    return json.loads(text)
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Gemini returned invalid JSON: {e}") from e
+
+    if require_fraud_fields:
+        if "is_fraud" not in parsed:
+            raise ValueError("Gemini response missing 'is_fraud' field")
+        if "fraud_score" not in parsed:
+            raise ValueError("Gemini response missing 'fraud_score' field")
+
+    return parsed
+
+
+def _create_analysis_result(parsed: dict, call_id: uuid.UUID) -> AnalysisResult:
+    return AnalysisResult(
+        id=uuid.uuid4(),
+        call_id=call_id,
+        transcript=parsed.get("transcript"),
+        is_fraud=parsed.get("is_fraud", False),
+        fraud_score=parsed.get("fraud_score", 0.0),
+        fraud_categories=parsed.get("fraud_categories", []),
+        reasons=parsed.get("reasons", []),
+        raw_response=parsed,
+        analyzed_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+
+
+def _create_profile_result(parsed: dict, call_id: uuid.UUID) -> ProfileResult:
+    return ProfileResult(
+        id=uuid.uuid4(),
+        call_id=call_id,
+        data=parsed,
+        transcript=parsed.get("transcript"),
+        analyzed_at=datetime.now(UTC).replace(tzinfo=None),
+    )
 
 
 async def analyze_call(call: Call, session: AsyncSession) -> AnalysisResult | ProfileResult:
@@ -100,28 +140,12 @@ async def analyze_call(call: Call, session: AsyncSession) -> AnalysisResult | Pr
     mime_type = get_mime_type(call.filename)
     prompt = build_prompt(call.profile)
     raw_response = await generate_content(audio_b64, mime_type, prompt)
-    parsed = _parse_gemini_response(raw_response)
+    parsed = _parse_gemini_response(raw_response, require_fraud_fields=(call.profile is None))
 
     if call.profile is not None:
-        result = ProfileResult(
-            id=uuid.uuid4(),
-            call_id=call.id,
-            data=parsed,
-            transcript=parsed.get("transcript"),
-            analyzed_at=datetime.now(UTC).replace(tzinfo=None),
-        )
+        result = _create_profile_result(parsed, call.id)
     else:
-        result = AnalysisResult(
-            id=uuid.uuid4(),
-            call_id=call.id,
-            transcript=parsed.get("transcript"),
-            is_fraud=parsed.get("is_fraud", False),
-            fraud_score=parsed.get("fraud_score", 0.0),
-            fraud_categories=parsed.get("fraud_categories", []),
-            reasons=parsed.get("reasons", []),
-            raw_response=parsed,
-            analyzed_at=datetime.now(UTC).replace(tzinfo=None),
-        )
+        result = _create_analysis_result(parsed, call.id)
     session.add(result)
     await session.commit()
     await session.refresh(result)
@@ -146,7 +170,7 @@ async def analyze_file(
 
     prompt = build_prompt(profile)
     raw_response = await generate_content(audio_b64, mime_type, prompt)
-    parsed = _parse_gemini_response(raw_response)
+    parsed = _parse_gemini_response(raw_response, require_fraud_fields=(profile is None))
 
     call = Call(
         id=uuid.uuid4(),
@@ -159,25 +183,9 @@ async def analyze_file(
     session.add(call)
 
     if profile is not None:
-        result = ProfileResult(
-            id=uuid.uuid4(),
-            call_id=call.id,
-            data=parsed,
-            transcript=parsed.get("transcript"),
-            analyzed_at=datetime.now(UTC).replace(tzinfo=None),
-        )
+        result = _create_profile_result(parsed, call.id)
     else:
-        result = AnalysisResult(
-            id=uuid.uuid4(),
-            call_id=call.id,
-            transcript=parsed.get("transcript"),
-            is_fraud=parsed.get("is_fraud", False),
-            fraud_score=parsed.get("fraud_score", 0.0),
-            fraud_categories=parsed.get("fraud_categories", []),
-            reasons=parsed.get("reasons", []),
-            raw_response=parsed,
-            analyzed_at=datetime.now(UTC).replace(tzinfo=None),
-        )
+        result = _create_analysis_result(parsed, call.id)
     session.add(result)
     await session.commit()
     await session.refresh(call)
@@ -199,10 +207,8 @@ async def analyze_bytes(
         save_path.write_bytes(data)
 
     mime_type = get_mime_type(filename)
-    logger.warning("=== ANALYZE BYTES ===")
-    logger.warning("File: %s, size: %d bytes, MIME: %s", filename, len(data), mime_type)
+    logger.debug("analyze_bytes: file=%s, size=%d, mime=%s", filename, len(data), mime_type)
     audio_b64 = encode_bytes_base64(data)
-    logger.warning("Base64 encoded size: %d bytes", len(audio_b64))
 
     # Load profile if specified
     profile = None
@@ -210,11 +216,11 @@ async def analyze_bytes(
         profile = (await session.execute(select(Profile).where(Profile.id == profile_id))).scalar_one_or_none()
 
     prompt = build_prompt(profile)
-    logger.warning("Calling Gemini...")
+    logger.debug("Calling Gemini...")
     raw_response = await generate_content(audio_b64, mime_type, prompt)
-    logger.warning("Gemini returned, parsing response...")
-    parsed = _parse_gemini_response(raw_response)
-    logger.warning("Parsed result: is_fraud=%s, score=%s", parsed.get("is_fraud"), parsed.get("fraud_score"))
+    logger.debug("Gemini returned, parsing response...")
+    parsed = _parse_gemini_response(raw_response, require_fraud_fields=(profile is None))
+    logger.debug("Parsed result: is_fraud=%s, score=%s", parsed.get("is_fraud"), parsed.get("fraud_score"))
 
     call = Call(
         id=uuid.uuid4(),
@@ -227,25 +233,9 @@ async def analyze_bytes(
     session.add(call)
 
     if profile is not None:
-        result = ProfileResult(
-            id=uuid.uuid4(),
-            call_id=call.id,
-            data=parsed,
-            transcript=parsed.get("transcript"),
-            analyzed_at=datetime.now(UTC).replace(tzinfo=None),
-        )
+        result = _create_profile_result(parsed, call.id)
     else:
-        result = AnalysisResult(
-            id=uuid.uuid4(),
-            call_id=call.id,
-            transcript=parsed.get("transcript"),
-            is_fraud=parsed.get("is_fraud", False),
-            fraud_score=parsed.get("fraud_score", 0.0),
-            fraud_categories=parsed.get("fraud_categories", []),
-            reasons=parsed.get("reasons", []),
-            raw_response=parsed,
-            analyzed_at=datetime.now(UTC).replace(tzinfo=None),
-        )
+        result = _create_analysis_result(parsed, call.id)
     session.add(result)
     await session.commit()
     await session.refresh(call)

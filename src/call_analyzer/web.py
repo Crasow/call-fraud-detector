@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
@@ -8,16 +8,16 @@ from fastapi import APIRouter, Depends, Form, Request, UploadFile
 logger = logging.getLogger(__name__)
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import cast, func, select, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from call_analyzer.audio import SUPPORTED_EXTENSIONS, get_audio_format
 from call_analyzer.config import settings
 from call_analyzer.database import get_session
 import json as _json
 
 from call_analyzer.models import AnalysisResult, Call, Profile, ProfileResult
+from call_analyzer.services import FileTooLargeError, UnsupportedFormatError, save_uploaded_file
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / "templates"))
@@ -63,32 +63,20 @@ async def upload_file(
     profile_id: str | None = Form(None),
     session: AsyncSession = Depends(get_session),
 ):
-    ext = Path(file.filename or "").suffix.lower()
-    if ext not in SUPPORTED_EXTENSIONS:
-        return templates.TemplateResponse("partials/analysis_result.html", {
-            "request": request,
-            "error": f"Unsupported format: {ext}",
-        })
-
-    data = await file.read()
-    save_path = Path(settings.upload_dir) / f"{uuid.uuid4()}{ext}"
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    save_path.write_bytes(data)
-
     pid = uuid.UUID(profile_id) if profile_id else None
 
-    call = Call(
-        id=uuid.uuid4(),
-        filename=file.filename or "unknown",
-        audio_format=get_audio_format(file.filename or "unknown"),
-        source="upload",
-        file_path=str(save_path),
-        status="pending",
-        profile_id=pid,
-    )
-    session.add(call)
-    await session.commit()
-    await session.refresh(call)
+    try:
+        call = await save_uploaded_file(file, "upload", session, profile_id=pid)
+    except UnsupportedFormatError as e:
+        return templates.TemplateResponse("partials/analysis_result.html", {
+            "request": request,
+            "error": str(e),
+        })
+    except FileTooLargeError as e:
+        return templates.TemplateResponse("partials/analysis_result.html", {
+            "request": request,
+            "error": str(e),
+        })
 
     if pid:
         call_q = select(Call).options(joinedload(Call.profile), joinedload(Call.profile_result)).where(Call.id == call.id)
@@ -136,12 +124,16 @@ async def calls_list(
     elif is_fraud == "false":
         fraud_filter = False
         query = query.join(AnalysisResult).where(AnalysisResult.is_fraud.is_(False))
+    elif is_fraud == "profile":
+        query = query.where(Call.profile_id.isnot(None))
 
     total_q = select(func.count(Call.id))
     if fraud_filter is True:
         total_q = total_q.join(AnalysisResult).where(AnalysisResult.is_fraud.is_(True))
     elif fraud_filter is False:
         total_q = total_q.join(AnalysisResult).where(AnalysisResult.is_fraud.is_(False))
+    elif is_fraud == "profile":
+        total_q = total_q.where(Call.profile_id.isnot(None))
     total = (await session.execute(total_q)).scalar() or 0
 
     query = query.offset((page - 1) * size).limit(size)
@@ -209,11 +201,11 @@ async def profile_create(
             "profile": None,
             "error": "prompt_mode must be 'custom' or 'template'",
         })
-    if prompt_mode == "template" and (not expert.strip() or not main_task.strip()):
+    if prompt_mode == "template" and not main_task.strip():
         return templates.TemplateResponse("profile_form.html", {
             "request": request,
             "profile": None,
-            "error": "Template mode requires 'expert' and 'main_task' fields",
+            "error": "Template mode requires 'main_task' field",
         })
 
     tw_list = [w.strip() for w in trigger_words.split(",") if w.strip()] if trigger_words.strip() else None
@@ -297,3 +289,54 @@ async def profile_delete(profile_id: uuid.UUID, session: AsyncSession = Depends(
     await session.delete(profile)
     await session.commit()
     return RedirectResponse(url=f"{settings.root_path}/profiles", status_code=303)
+
+
+# ── Dashboard ────────────────────────────────────────────────────────
+
+@router.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request, session: AsyncSession = Depends(get_session)):
+    total = (await session.execute(select(func.count(Call.id)))).scalar() or 0
+    fraud = (
+        await session.execute(
+            select(func.count(AnalysisResult.id)).where(AnalysisResult.is_fraud.is_(True))
+        )
+    ).scalar() or 0
+    profile_count = (
+        await session.execute(select(func.count(ProfileResult.id)))
+    ).scalar() or 0
+
+    stats = {
+        "total_calls": total,
+        "fraud_calls": fraud,
+        "clean_calls": total - fraud - profile_count,
+        "profile_calls": profile_count,
+    }
+
+    since = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=30)
+    day_col = cast(Call.created_at, Date).label("day")
+    daily_q = (
+        select(day_col, func.count(Call.id).label("total"))
+        .where(Call.created_at >= since)
+        .group_by(day_col)
+        .order_by(day_col)
+    )
+    daily_rows = (await session.execute(daily_q)).all()
+
+    fraud_q = (
+        select(cast(Call.created_at, Date).label("day"), func.count(Call.id).label("fraud"))
+        .join(AnalysisResult)
+        .where(Call.created_at >= since, AnalysisResult.is_fraud.is_(True))
+        .group_by(cast(Call.created_at, Date))
+    )
+    fraud_map = {str(r.day): r.fraud for r in (await session.execute(fraud_q)).all()}
+
+    daily_stats = [
+        {"date": str(r.day), "total": r.total, "fraud": fraud_map.get(str(r.day), 0)}
+        for r in daily_rows
+    ]
+
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request,
+        "stats": stats,
+        "daily_stats": daily_stats,
+    })
