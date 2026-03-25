@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from call_fraud_detector.audio import (
+from call_analyzer.audio import (
     encode_bytes_base64,
     get_audio_format,
     get_mime_type,

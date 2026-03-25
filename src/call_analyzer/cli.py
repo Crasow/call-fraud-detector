@@ -5,9 +5,9 @@ from typing import Optional
 
 import typer
 
-from call_fraud_detector.audio import SUPPORTED_EXTENSIONS
+from call_analyzer.audio import SUPPORTED_EXTENSIONS
 
-app = typer.Typer(name="cfd", help="Call Fraud Detector CLI")
+app = typer.Typer(name="ca", help="Call Analyzer CLI")
 profile_app = typer.Typer(name="profile", help="Manage analysis profiles")
 app.add_typer(profile_app)
 
@@ -33,8 +33,8 @@ def analyze(
 
     async def _do():
         import json as _json
-        from call_fraud_detector.analyzer import analyze_file
-        from call_fraud_detector.database import async_session
+        from call_analyzer.analyzer import analyze_file
+        from call_analyzer.database import async_session
 
         async with async_session() as session:
             call, result = await analyze_file(file, "cli", session, profile_id=pid)
@@ -75,8 +75,8 @@ def analyze_dir(
     pid = uuid.UUID(profile_id) if profile_id else None
 
     async def _do():
-        from call_fraud_detector.analyzer import analyze_file
-        from call_fraud_detector.database import async_session
+        from call_analyzer.analyzer import analyze_file
+        from call_analyzer.database import async_session
 
         async with async_session() as session:
             for f in files:
@@ -96,7 +96,7 @@ def analyze_dir(
 @app.command()
 def watch(directory: Path = typer.Option(None, help="Directory to watch")):
     """Watch a directory for new audio files and analyze them."""
-    from call_fraud_detector.watcher import start_watcher
+    from call_analyzer.watcher import start_watcher
 
     start_watcher(directory)
 
@@ -109,8 +109,8 @@ def list_calls(limit: int = typer.Option(10, help="Number of recent calls")):
         from sqlalchemy import select
         from sqlalchemy.orm import joinedload
 
-        from call_fraud_detector.database import async_session
-        from call_fraud_detector.models import Call
+        from call_analyzer.database import async_session
+        from call_analyzer.models import Call
 
         async with async_session() as session:
             query = (
@@ -143,8 +143,8 @@ def stats():
     async def _do():
         from sqlalchemy import func, select
 
-        from call_fraud_detector.database import async_session
-        from call_fraud_detector.models import AnalysisResult, Call, ProfileResult
+        from call_analyzer.database import async_session
+        from call_analyzer.models import AnalysisResult, Call, ProfileResult
 
         async with async_session() as session:
             total = (await session.execute(select(func.count(Call.id)))).scalar() or 0
@@ -172,7 +172,7 @@ def serve(host: str = "0.0.0.0", port: int = 8080, root_path: str = ""):
     """Start the web server."""
     import uvicorn
 
-    from call_fraud_detector.app import create_app
+    from call_analyzer.app import create_app
 
     application = create_app()
     uvicorn.run(application, host=host, port=port, root_path=root_path)
@@ -200,8 +200,8 @@ def profile_create(
         raise typer.Exit(1)
 
     async def _do():
-        from call_fraud_detector.database import async_session
-        from call_fraud_detector.models import Profile
+        from call_analyzer.database import async_session
+        from call_analyzer.models import Profile
 
         tw_list = [w.strip() for w in trigger_words.split(",") if w.strip()] if trigger_words else None
 
@@ -232,8 +232,8 @@ def profile_list():
     async def _do():
         from sqlalchemy import select
 
-        from call_fraud_detector.database import async_session
-        from call_fraud_detector.models import Profile
+        from call_analyzer.database import async_session
+        from call_analyzer.models import Profile
 
         async with async_session() as session:
             profiles = (await session.execute(select(Profile).order_by(Profile.name))).scalars().all()
@@ -264,8 +264,8 @@ def profile_update(
     async def _do():
         from sqlalchemy import select
 
-        from call_fraud_detector.database import async_session
-        from call_fraud_detector.models import Profile
+        from call_analyzer.database import async_session
+        from call_analyzer.models import Profile
 
         pid = uuid.UUID(profile_id)
         async with async_session() as session:

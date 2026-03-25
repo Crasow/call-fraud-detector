@@ -1,7 +1,7 @@
 [project]
-name = "call-fraud-detector"
+name = "call-analyzer"
 version = "0.1.0"
-description = "Call fraud detection system using Gemini AI"
+description = "Call analysis system using Gemini AI"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cfd = "call_fraud_detector.cli:app"
+ca = "call_analyzer.cli:app"
 
 [build-system]
 requires = ["hatchling"]

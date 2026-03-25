@@ -4,7 +4,7 @@ import time
 
 import httpx
 
-from call_fraud_detector.config import settings
+from call_analyzer.config import settings
 
 logger = logging.getLogger(__name__)
 

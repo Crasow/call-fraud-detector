@@ -1,4 +1,4 @@
-# Call Fraud Detector
+# Call Analyzer
 
 Анализирует телефонные звонки на мошенничество с помощью Gemini AI.
 Поддерживает произвольные профили анализа для любых задач обработки аудио.
@@ -115,33 +115,33 @@ curl -X DELETE http://localhost:8080/api/v1/profiles/{id}
 ### CLI
 
 ```bash
-cfd analyze call.wav                    # Прямой анализ (фрод-детекция)
-cfd analyze call.wav --profile-id <uuid> # Анализ с профилем
-cfd analyze-dir ./calls/                # Пакетный анализ папки
-cfd analyze-dir ./calls/ --profile-id <uuid>
-cfd list                                # Последние результаты
-cfd stats                               # Статистика
-cfd watch                               # Следить за папкой
-cfd serve                               # Запустить веб-сервер
+ca analyze call.wav                    # Прямой анализ (фрод-детекция)
+ca analyze call.wav --profile-id <uuid> # Анализ с профилем
+ca analyze-dir ./calls/                # Пакетный анализ папки
+ca analyze-dir ./calls/ --profile-id <uuid>
+ca list                                # Последние результаты
+ca stats                               # Статистика
+ca watch                               # Следить за папкой
+ca serve                               # Запустить веб-сервер
 ```
 
 #### Управление профилями через CLI
 
 ```bash
 # Создать профиль (custom mode)
-cfd profile create --name "Мой профиль" --custom-prompt "Проанализируй звонок..."
+ca profile create --name "Мой профиль" --custom-prompt "Проанализируй звонок..."
 
 # Создать профиль (template mode)
-cfd profile create --name "QA" --prompt-mode template \
+ca profile create --name "QA" --prompt-mode template \
   --expert "контроль качества" \
   --main-task "Оцени качество обслуживания" \
   --fields-for-json "score,summary"
 
 # Список профилей
-cfd profile list
+ca profile list
 
 # Обновить профиль
-cfd profile update <uuid> --name "Новое имя" --trigger-words "спасибо,жалоба"
+ca profile update <uuid> --name "Новое имя" --trigger-words "спасибо,жалоба"
 ```
 
 ### Docker

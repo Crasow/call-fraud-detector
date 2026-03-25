@@ -4,8 +4,8 @@ from email.mime.text import MIMEText
 
 import aiosmtplib
 
-from call_fraud_detector.config import settings
-from call_fraud_detector.models import AnalysisResult, Call
+from call_analyzer.config import settings
+from call_analyzer.models import AnalysisResult, Call
 
 logger = logging.getLogger(__name__)
 

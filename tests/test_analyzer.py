@@ -1,4 +1,4 @@
-from call_fraud_detector.analyzer import _parse_gemini_response
+from call_analyzer.analyzer import _parse_gemini_response
 
 
 def test_parse_gemini_response():

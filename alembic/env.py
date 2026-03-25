@@ -8,8 +8,8 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from call_fraud_detector.config import settings
-from call_fraud_detector.models import Base
+from call_analyzer.config import settings
+from call_analyzer.models import Base
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("+asyncpg", "+psycopg2") if "+asyncpg" in settings.database_url else settings.database_url)

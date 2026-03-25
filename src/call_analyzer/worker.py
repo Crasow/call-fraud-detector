@@ -4,11 +4,11 @@ import logging
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload
 
-from call_fraud_detector.analyzer import analyze_call
-from call_fraud_detector.config import settings
-from call_fraud_detector.database import async_session
-from call_fraud_detector.models import Call
-from call_fraud_detector.notifications import send_fraud_alert
+from call_analyzer.analyzer import analyze_call
+from call_analyzer.config import settings
+from call_analyzer.database import async_session
+from call_analyzer.models import Call
+from call_analyzer.notifications import send_fraud_alert
 
 logger = logging.getLogger(__name__)
 

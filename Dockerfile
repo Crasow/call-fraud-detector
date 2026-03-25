@@ -18,4 +18,4 @@ RUN uv sync --frozen
 
 EXPOSE 8080
 
-CMD ["uv", "run", "cfd", "serve", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uv", "run", "ca", "serve", "--host", "0.0.0.0", "--port", "8080"]

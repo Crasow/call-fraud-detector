@@ -9,14 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
-from call_fraud_detector.audio import (
+from call_analyzer.audio import (
     encode_audio_base64,
     encode_bytes_base64,
     get_audio_format,
     get_mime_type,
 )
-from call_fraud_detector.gemini_client import generate_content
-from call_fraud_detector.models import AnalysisResult, Call, Profile, ProfileResult
+from call_analyzer.gemini_client import generate_content
+from call_analyzer.models import AnalysisResult, Call, Profile, ProfileResult
 
 ANALYSIS_PROMPT = """\
 You are a phone call fraud detection expert. Analyze this audio recording and provide:

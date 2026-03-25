@@ -4,9 +4,9 @@ from pathlib import Path
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from call_fraud_detector.audio import SUPPORTED_EXTENSIONS
-from call_fraud_detector.config import settings
-from call_fraud_detector.database import async_session
+from call_analyzer.audio import SUPPORTED_EXTENSIONS
+from call_analyzer.config import settings
+from call_analyzer.database import async_session
 
 
 class AudioFileHandler(FileSystemEventHandler):
@@ -23,7 +23,7 @@ class AudioFileHandler(FileSystemEventHandler):
         self._loop.create_task(self._analyze(path))
 
     async def _analyze(self, path: Path) -> None:
-        from call_fraud_detector.analyzer import analyze_file
+        from call_analyzer.analyzer import analyze_file
 
         async with async_session() as session:
             try:

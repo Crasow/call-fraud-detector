@@ -6,10 +6,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from call_fraud_detector.audio import SUPPORTED_EXTENSIONS, get_audio_format
-from call_fraud_detector.config import settings
-from call_fraud_detector.database import get_session
-from call_fraud_detector.models import AnalysisResult, Call, Profile, ProfileResult
+from call_analyzer.audio import SUPPORTED_EXTENSIONS, get_audio_format
+from call_analyzer.config import settings
+from call_analyzer.database import get_session
+from call_analyzer.models import AnalysisResult, Call, Profile, ProfileResult
 
 router = APIRouter(prefix="/api/v1")
 

@@ -5,13 +5,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from call_fraud_detector.app import create_app
-from call_fraud_detector.models import AnalysisResult, Call
+from call_analyzer.app import create_app
+from call_analyzer.models import AnalysisResult, Call
 
 
 @pytest.fixture
 def app():
-    with patch("call_fraud_detector.app.worker_loop", new_callable=AsyncMock):
+    with patch("call_analyzer.app.worker_loop", new_callable=AsyncMock):
         yield create_app()
 
 
@@ -41,7 +41,7 @@ async def test_analyze_endpoint(client):
     async def fake_create(file, source, session):
         return call
 
-    with patch("call_fraud_detector.api._create_pending_call", new_callable=AsyncMock, return_value=call):
+    with patch("call_analyzer.api._create_pending_call", new_callable=AsyncMock, return_value=call):
         resp = await client.post(
             "/api/v1/calls/analyze",
             files={"file": ("test.wav", b"fake audio", "audio/wav")},

@@ -2,9 +2,9 @@
 
 import pytest
 
-from call_fraud_detector.audio import encode_audio_base64, get_mime_type
-from call_fraud_detector.analyzer import _parse_gemini_response
-from call_fraud_detector.gemini_client import generate_content
+from call_analyzer.audio import encode_audio_base64, get_mime_type
+from call_analyzer.analyzer import _parse_gemini_response
+from call_analyzer.gemini_client import generate_content
 
 from pathlib import Path
 

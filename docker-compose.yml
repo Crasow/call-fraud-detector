@@ -2,7 +2,7 @@ services:
   db:
     image: postgres:17
     environment:
-      POSTGRES_DB: call_fraud_detector
+      POSTGRES_DB: call_analyzer
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
@@ -20,11 +20,11 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/call_fraud_detector
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/call_analyzer
 
   app:
     build: .
-    command: uv run uvicorn call_fraud_detector.app:create_app --factory --host 0.0.0.0 --port 8080 --reload --reload-dir /app/src --reload-dir /app/templates
+    command: uv run uvicorn call_analyzer.app:create_app --factory --host 0.0.0.0 --port 8080 --reload --reload-dir /app/src --reload-dir /app/templates
     ports:
       - "8080:8080"
     depends_on:
@@ -33,7 +33,7 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/call_fraud_detector
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/call_analyzer
       GEMINI_PROXY_URL: ${GEMINI_PROXY_URL:-http://172.17.0.1:8000}
       GEMINI_PROJECT_ID: ${GEMINI_PROJECT_ID}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}

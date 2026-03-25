@@ -1,4 +1,4 @@
-from call_fraud_detector.config import Settings
+from call_analyzer.config import Settings
 
 
 def test_default_settings():

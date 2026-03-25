@@ -1,4 +1,4 @@
-# Call Fraud Detector — Architecture Notes
+# Call Analyzer — Architecture Notes
 
 AI-платформа анализа аудиозвонков. По умолчанию — фрод-детекция, с профилями — произвольный анализ через Gemini API.
 
@@ -17,14 +17,14 @@ AI-платформа анализа аудиозвонков. По умолча
 ```bash
 docker compose up -d --build          # Запуск всего стека
 uv run alembic upgrade head           # Миграции
-uv run cfd serve                      # Локальный запуск (без Docker)
+uv run ca serve                      # Локальный запуск (без Docker)
 uv run pytest                         # Тесты
 ```
 
 ## Project Structure
 
 ```
-src/call_fraud_detector/
+src/call_analyzer/
 ├── app.py              # FastAPI factory, lifespan (запуск worker), static mount
 ├── api.py              # REST API: /api/v1 (calls, profiles, stats, webhook)
 ├── web.py              # Web UI: Jinja2 routes (upload, calls, profiles)
