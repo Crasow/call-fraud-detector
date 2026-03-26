@@ -7,8 +7,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/call_analyzer"
+    gemini_mode: str = "proxy"  # "proxy" (via proxy server) or "direct" (Vertex AI with API key)
     gemini_proxy_url: str = "http://localhost:8000"
     gemini_project_id: str = ""
+    gemini_api_key: str = ""  # API key for direct mode
     gemini_model: str = "gemini-2.5-flash"
     gemini_location: str = "us-central1"
     watch_dir: Path = Path("./watch")

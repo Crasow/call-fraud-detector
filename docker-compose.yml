@@ -34,8 +34,10 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/call_analyzer
+      GEMINI_MODE: ${GEMINI_MODE:-proxy}
       GEMINI_PROXY_URL: ${GEMINI_PROXY_URL:-http://172.17.0.1:8000}
       GEMINI_PROJECT_ID: ${GEMINI_PROJECT_ID}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       GEMINI_LOCATION: ${GEMINI_LOCATION:-us-central1}
       UPLOAD_DIR: /app/uploads

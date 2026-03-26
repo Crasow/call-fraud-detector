@@ -12,16 +12,31 @@ logger = logging.getLogger(__name__)
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
+def _build_request() -> tuple[str, dict[str, str]]:
+    """Build URL and headers based on gemini_mode config."""
+    if settings.gemini_mode == "direct":
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta"
+            f"/models/{settings.gemini_model}:generateContent"
+            f"?key={settings.gemini_api_key}"
+        )
+        return url, {"Content-Type": "application/json"}
+    else:
+        # proxy mode: Vertex AI format through proxy
+        url = (
+            f"{settings.gemini_proxy_url}/v1/projects/{settings.gemini_project_id}"
+            f"/locations/{settings.gemini_location}/publishers/google/models/{settings.gemini_model}"
+            ":generateContent"
+        )
+        return url, {"Content-Type": "application/json"}
+
+
 async def generate_content(
     inline_data_base64: str,
     mime_type: str,
     text_prompt: str,
 ) -> dict:
-    url = (
-        f"{settings.gemini_proxy_url}/v1/projects/{settings.gemini_project_id}"
-        f"/locations/{settings.gemini_location}/publishers/google/models/{settings.gemini_model}"
-        ":generateContent"
-    )
+    url, headers = _build_request()
 
     body = {
         "contents": [
@@ -44,7 +59,8 @@ async def generate_content(
     }
 
     data_size_mb = len(inline_data_base64) / 1024 / 1024
-    logger.info("Gemini request: mime=%s, audio=%.2fMB, prompt=%d chars", mime_type, data_size_mb, len(text_prompt))
+    logger.info("Gemini request [%s]: mime=%s, audio=%.2fMB, prompt=%d chars",
+                settings.gemini_mode, mime_type, data_size_mb, len(text_prompt))
 
     body_bytes = json.dumps(body).encode()
     timeout = httpx.Timeout(connect=30, write=600, read=settings.gemini_read_timeout, pool=30)
@@ -55,7 +71,7 @@ async def generate_content(
         t0 = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(url, content=body_bytes, headers={"Content-Type": "application/json"})
+                resp = await client.post(url, content=body_bytes, headers=headers)
                 elapsed = time.monotonic() - t0
                 logger.info("Gemini response: status=%s, elapsed=%.1fs", resp.status_code, elapsed)
 
