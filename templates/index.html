@@ -30,32 +30,21 @@
          ondrop="event.preventDefault(); this.classList.remove('border-blue-500','bg-blue-50'); handleFiles(event.dataTransfer.files)"
          onclick="document.getElementById('file-input').click()">
         <input type="file" name="file" accept=".wav,.mp3,.ogg,.flac,.m4a,.webm"
-               class="hidden" id="file-input"
+               class="hidden" id="file-input" multiple
                onchange="handleFiles(this.files)">
         <div id="drop-zone-idle">
             <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
                 <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
-            <p class="text-gray-600 mt-2">Drop audio file here or click to select</p>
-            <p class="text-sm text-gray-400 mt-1">WAV, MP3, OGG, FLAC, M4A, WebM</p>
+            <p class="text-gray-600 mt-2">Drop audio files here or click to select</p>
+            <p class="text-sm text-gray-400 mt-1">WAV, MP3, OGG, FLAC, M4A, WebM (multiple files allowed)</p>
         </div>
         <div id="drop-zone-selected" class="hidden">
             <svg class="mx-auto h-10 w-10 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
             </svg>
-            <p id="file-name" class="mt-2 text-sm font-medium text-blue-600"></p>
-            <p id="file-size" class="text-xs text-gray-400"></p>
-        </div>
-    </div>
-
-    <!-- Progress area -->
-    <div id="progress-area" class="hidden mt-4">
-        <div class="flex items-center justify-between mb-1">
-            <span id="progress-label" class="text-sm text-gray-600">Uploading...</span>
-            <span id="progress-pct" class="text-sm font-medium text-gray-700">0%</span>
-        </div>
-        <div class="w-full bg-gray-200 rounded-full h-2.5">
-            <div id="progress-bar" class="h-2.5 rounded-full bg-blue-500 transition-all duration-300" style="width: 0%"></div>
+            <p id="file-summary" class="mt-2 text-sm font-medium text-blue-600"></p>
+            <ul id="file-list" class="mt-2 text-left max-h-32 overflow-y-auto"></ul>
         </div>
     </div>
 
@@ -85,7 +74,9 @@
 <div id="result"></div>
 
 <script>
-let selectedFile = null;
+let selectedFiles = [];
+const MAX_PARALLEL_UPLOADS = 3;
+let activeUploads = 0;
 
 function formatSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
@@ -95,99 +86,184 @@ function formatSize(bytes) {
 
 function handleFiles(files) {
     if (!files || !files.length) return;
-    const file = files[0];
-    const ext = file.name.split('.').pop().toLowerCase();
+
     const allowed = ['wav','mp3','ogg','flac','m4a','webm'];
-    if (!allowed.includes(ext)) {
-        showError('Unsupported format: .' + ext + '. Supported: WAV, MP3, OGG, FLAC, M4A, WebM');
+    let validFiles = [];
+    let errors = [];
+
+    for (let file of files) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!allowed.includes(ext)) {
+            errors.push('Unsupported: ' + file.name + ' (.' + ext + ')');
+        } else {
+            validFiles.push(file);
+        }
+    }
+
+    if (errors.length > 0) {
+        showError(errors.join('<br>'));
         return;
     }
-    selectedFile = file;
-    document.getElementById('file-name').textContent = file.name;
-    document.getElementById('file-size').textContent = formatSize(file.size);
+
+    if (validFiles.length === 0) return;
+
+    selectedFiles = validFiles;
+
+    // Update UI
     document.getElementById('drop-zone-idle').classList.add('hidden');
     document.getElementById('drop-zone-selected').classList.remove('hidden');
+
+    const fileList = document.getElementById('file-list');
+    fileList.innerHTML = '';
+    let totalSize = 0;
+    for (let file of selectedFiles) {
+        totalSize += file.size;
+        const li = document.createElement('li');
+        li.className = 'flex justify-between items-center py-1 text-sm text-gray-600';
+        li.innerHTML = '<span>' + file.name + '</span><span class="text-gray-400">' + formatSize(file.size) + '</span>';
+        fileList.appendChild(li);
+    }
+
+    const summary = document.getElementById('file-summary');
+    summary.textContent = selectedFiles.length + ' file' + (selectedFiles.length !== 1 ? 's' : '') + ' (' + formatSize(totalSize) + ')';
+
     document.getElementById('btn-analyze').disabled = false;
     document.getElementById('result').innerHTML = '';
 }
 
 function startUpload() {
-    if (!selectedFile) return;
+    if (!selectedFiles || !selectedFiles.length) return;
+
+    const profileId = document.getElementById('profile-select').value;
+
+    // Disable controls
+    document.getElementById('btn-analyze').disabled = true;
+    document.getElementById('btn-analyze').textContent = 'Uploading...';
+    document.getElementById('btn-reset').classList.add('hidden');
+    const dropZone = document.getElementById('drop-zone');
+    dropZone.style.pointerEvents = 'none';
+    dropZone.classList.add('opacity-50');
+
+    document.getElementById('result').innerHTML = '';
+
+    // Initialize progress tracking
+    const results = document.getElementById('result');
+    results.innerHTML = '<div id="upload-results" class="mt-4 space-y-2"></div>';
+
+    activeUploads = 0;
+
+    // Start uploads
+    const uploadQueue = [...selectedFiles];
+    const maxSimultaneous = Math.min(MAX_PARALLEL_UPLOADS, uploadQueue.length);
+
+    for (let i = 0; i < maxSimultaneous; i++) {
+        uploadNextFile(uploadQueue, profileId);
+    }
+}
+
+function uploadNextFile(queue, profileId) {
+    if (queue.length === 0) {
+        if (activeUploads === 0) {
+            finishUpload();
+        }
+        return;
+    }
+
+    activeUploads++;
+    const file = queue.shift();
 
     const formData = new FormData();
-    formData.append('file', selectedFile);
-    const profileId = document.getElementById('profile-select').value;
+    formData.append('file', file);
     if (profileId) {
         formData.append('profile_id', profileId);
     }
 
-    const xhr = new XMLHttpRequest();
-    const progressArea = document.getElementById('progress-area');
-    const progressBar = document.getElementById('progress-bar');
-    const progressPct = document.getElementById('progress-pct');
-    const progressLabel = document.getElementById('progress-label');
-    const btnAnalyze = document.getElementById('btn-analyze');
-    const btnReset = document.getElementById('btn-reset');
-    const dropZone = document.getElementById('drop-zone');
+    const resultId = 'file-' + file.name.replace(/[^a-z0-9]/gi, '_');
+    const resultsDiv = document.getElementById('upload-results');
 
-    // Disable controls
-    btnAnalyze.disabled = true;
-    btnAnalyze.textContent = 'Uploading...';
-    btnReset.classList.add('hidden');
-    dropZone.style.pointerEvents = 'none';
-    dropZone.classList.add('opacity-50');
-    progressArea.classList.remove('hidden');
-    progressBar.style.width = '0%';
-    progressBar.className = 'h-2.5 rounded-full bg-blue-500 transition-all duration-300';
-    progressLabel.textContent = 'Uploading...';
-    progressPct.textContent = '0%';
-    document.getElementById('result').innerHTML = '';
+    const fileDiv = document.createElement('div');
+    fileDiv.id = resultId;
+    fileDiv.className = 'border rounded-lg p-3 bg-gray-50';
+    fileDiv.innerHTML = `
+        <div class="flex items-start justify-between mb-2">
+            <div class="flex-1">
+                <div class="font-medium text-sm text-gray-700">${file.name}</div>
+                <div class="text-xs text-gray-500 mt-1">Uploading...</div>
+            </div>
+            <span id="${resultId}-size" class="text-xs text-gray-400">${formatSize(file.size)}</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2">
+            <div id="${resultId}-bar" class="h-2 rounded-full bg-blue-500 transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <div class="flex items-center justify-between mt-2">
+            <span id="${resultId}-status" class="text-xs text-gray-600">0%</span>
+            <span id="${resultId}-msg" class="text-xs text-gray-500"></span>
+        </div>
+    `;
+    resultsDiv.appendChild(fileDiv);
+
+    const xhr = new XMLHttpRequest();
 
     xhr.upload.addEventListener('progress', function(e) {
         if (e.lengthComputable) {
             const pct = Math.round((e.loaded / e.total) * 100);
-            progressBar.style.width = pct + '%';
-            progressPct.textContent = pct + '%';
+            document.getElementById(resultId + '-bar').style.width = pct + '%';
+            document.getElementById(resultId + '-status').textContent = pct + '%';
         }
-    });
-
-    xhr.upload.addEventListener('load', function() {
-        // Upload done, queued for processing
-        progressBar.style.width = '100%';
-        progressPct.textContent = '100%';
-        progressBar.className = 'h-2.5 rounded-full bg-green-500 transition-all duration-300';
-        progressLabel.textContent = 'Uploaded! Queued for analysis.';
-        btnAnalyze.textContent = 'Queued';
     });
 
     xhr.addEventListener('load', function() {
+        activeUploads--;
+        const statusEl = document.getElementById(resultId + '-status');
+        const barEl = document.getElementById(resultId + '-bar');
+        const msgEl = document.getElementById(resultId + '-msg');
+
         if (xhr.status >= 200 && xhr.status < 300) {
-            // Success
-            progressBar.className = 'h-2.5 rounded-full bg-green-500 transition-all duration-300';
-            progressLabel.textContent = 'Done!';
-            const resultEl = document.getElementById('result');
-            resultEl.innerHTML = xhr.responseText;
-            htmx.process(resultEl);
+            barEl.style.width = '100%';
+            barEl.className = 'h-2 rounded-full bg-green-500 transition-all duration-300';
+            statusEl.textContent = '✓ Done';
+            statusEl.className = 'text-xs text-green-600 font-medium';
+            msgEl.textContent = 'Queued for analysis';
+            msgEl.className = 'text-xs text-green-500';
         } else {
-            progressBar.className = 'h-2.5 rounded-full bg-red-500 transition-all duration-300';
-            progressLabel.textContent = 'Server error';
-            showError('Server returned status ' + xhr.status + '. Please try again.');
+            barEl.className = 'h-2 rounded-full bg-red-500 transition-all duration-300';
+            statusEl.textContent = '✗ Error';
+            statusEl.className = 'text-xs text-red-600 font-medium';
+            msgEl.textContent = 'Status ' + xhr.status;
+            msgEl.className = 'text-xs text-red-500';
         }
-        finishUpload();
+
+        uploadNextFile(queue, profileId);
     });
 
     xhr.addEventListener('error', function() {
-        progressBar.className = 'h-2.5 rounded-full bg-red-500 transition-all duration-300';
-        progressLabel.textContent = 'Network error';
-        showError('Network error. Check your connection and try again.');
-        finishUpload();
+        activeUploads--;
+        const barEl = document.getElementById(resultId + '-bar');
+        const statusEl = document.getElementById(resultId + '-status');
+        const msgEl = document.getElementById(resultId + '-msg');
+
+        barEl.className = 'h-2 rounded-full bg-red-500 transition-all duration-300';
+        statusEl.textContent = '✗ Error';
+        statusEl.className = 'text-xs text-red-600 font-medium';
+        msgEl.textContent = 'Network error';
+        msgEl.className = 'text-xs text-red-500';
+
+        uploadNextFile(queue, profileId);
     });
 
     xhr.addEventListener('timeout', function() {
-        progressBar.className = 'h-2.5 rounded-full bg-red-500 transition-all duration-300';
-        progressLabel.textContent = 'Timeout';
-        showError('Request timed out. The file may be too large or the server is busy.');
-        finishUpload();
+        activeUploads--;
+        const barEl = document.getElementById(resultId + '-bar');
+        const statusEl = document.getElementById(resultId + '-status');
+        const msgEl = document.getElementById(resultId + '-msg');
+
+        barEl.className = 'h-2 rounded-full bg-red-500 transition-all duration-300';
+        statusEl.textContent = '✗ Timeout';
+        statusEl.className = 'text-xs text-red-600 font-medium';
+        msgEl.textContent = 'Request timeout';
+        msgEl.className = 'text-xs text-red-500';
+
+        uploadNextFile(queue, profileId);
     });
 
     xhr.timeout = 600000; // 10 min
@@ -208,11 +284,10 @@ function finishUpload() {
 }
 
 function resetForm() {
-    selectedFile = null;
+    selectedFiles = [];
     document.getElementById('file-input').value = '';
     document.getElementById('drop-zone-idle').classList.remove('hidden');
     document.getElementById('drop-zone-selected').classList.add('hidden');
-    document.getElementById('progress-area').classList.add('hidden');
     document.getElementById('btn-analyze').disabled = true;
     document.getElementById('btn-analyze').textContent = 'Analyze';
     document.getElementById('btn-reset').classList.add('hidden');
@@ -226,8 +301,8 @@ function resetForm() {
 function showError(msg) {
     document.getElementById('result').innerHTML =
         '<div class="bg-red-50 border border-red-200 rounded-lg p-4 mt-4">' +
-        '<div class="flex items-center gap-2 text-red-700">' +
-        '<svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' +
+        '<div class="flex items-start gap-2 text-red-700">' +
+        '<svg class="h-5 w-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' +
         '<span>' + msg + '</span>' +
         '</div></div>';
 }
