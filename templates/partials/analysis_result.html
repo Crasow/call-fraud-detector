@@ -47,7 +47,7 @@
     {% if call.profile_result and result.data %}
     {% from "partials/json_sections.html" import render_field %}
     <div class="mt-3 divide-y divide-gray-100">
-        {% for key, value in result.data.items() %}
+        {% for key, value in result.data.items() if key.lower() != 'transcript' %}
         {{ render_field(key, value) }}
         {% endfor %}
     </div>
@@ -69,12 +69,6 @@
     {% endif %}
     {% endif %}
 
-    {% if result.transcript %}
-    <details class="mt-3">
-        <summary class="cursor-pointer text-sm text-blue-600 hover:underline">Show transcript</summary>
-        <div class="mt-2 p-3 bg-gray-50 rounded text-sm whitespace-pre-wrap">{{ result.transcript }}</div>
-    </details>
-    {% endif %}
 </div>
 {% elif call and call.status in ('pending', 'processing') %}
 <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mt-4"
