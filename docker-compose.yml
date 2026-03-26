@@ -24,7 +24,7 @@ services:
 
   app:
     build: .
-    command: uv run uvicorn call_analyzer.app:create_app --factory --host 0.0.0.0 --port 8080 --reload --reload-dir /app/src --reload-dir /app/templates
+    command: uv run uvicorn call_analyzer.app:create_app --factory --host 0.0.0.0 --port 8080 --reload --reload-dir /app/src --reload-dir /app/templates --limit-request-body 104857600
     ports:
       - "8080:8080"
     depends_on:
